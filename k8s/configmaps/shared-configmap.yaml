@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shared-infra-config
+  namespace: fiap-games
+  labels:
+    tier: shared
+data:
+  # Kafka — Service DNS dentro do cluster
+  Kafka__BootstrapServers: "kafka:9092"
+  Kafka__TopicOrderPlaced: "order-placed"
+  Kafka__TopicPaymentProcessed: "payment-processed"
+  Kafka__TopicUserCreated: "user-created"
+  Kafka__TopicNotificationRequested: "notification-requested"
+
+  # MongoDB
+  MongoDb__Host: "mongodb"
+  MongoDb__Port: "27017"
+  MongoDb__CollectionName: "AuditLogs"
+
+  # Redis
+  ConnectionStrings__Redis: "redis:6379"

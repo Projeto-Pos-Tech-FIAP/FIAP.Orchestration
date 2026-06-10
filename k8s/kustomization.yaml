@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fiap-games
+
+resources:
+  # 1. Namespace (sempre primeiro)
+  - 00-namespace.yaml
+
+  # 2. ConfigMaps (não-sensíveis)
+  - configmaps/shared-configmap.yaml
+  - configmaps/catalog-api-configmap.yaml
+  - configmaps/user-api-configmap.yaml
+  - configmaps/payment-api-configmap.yaml
+  - configmaps/notification-api-configmap.yaml
+
+  # 3. Secrets (sensíveis)
+  - secrets/infra-secret.yaml
+  - secrets/catalog-api-secret.yaml
+  - secrets/user-api-secret.yaml
+  - secrets/payment-api-secret.yaml
+  - secrets/notification-api-secret.yaml
+
+  # 4. PersistentVolumeClaims
+  - infrastructure/sqlserver-pvc.yaml
+  - infrastructure/mongodb-pvc.yaml
+  - infrastructure/kafka-pvc.yaml
+
+  # 5. Infraestrutura
+  - infrastructure/sqlserver-deployment.yaml
+  - infrastructure/sqlserver-service.yaml
+  - infrastructure/mongodb-deployment.yaml
+  - infrastructure/mongodb-service.yaml
+  - infrastructure/redis-deployment.yaml
+  - infrastructure/redis-service.yaml
+  - infrastructure/zookeeper-deployment.yaml
+  - infrastructure/zookeeper-service.yaml
+  - infrastructure/kafka-deployment.yaml
+  - infrastructure/kafka-service.yaml
+
+  # 6. Microserviços
+  - services/catalog-api-deployment.yaml
+  - services/catalog-api-service.yaml
+  - services/user-api-deployment.yaml
+  - services/user-api-service.yaml
+  - services/payment-api-deployment.yaml
+  - services/payment-api-service.yaml
+  - services/notification-api-deployment.yaml
+  - services/notification-api-service.yaml

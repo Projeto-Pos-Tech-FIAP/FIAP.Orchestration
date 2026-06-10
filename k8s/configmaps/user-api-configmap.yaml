@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-api-config
+  namespace: fiap-games
+  labels:
+    app: user-api
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  Kafka__GroupId: "user-api-group"
+  MongoDb__DatabaseName: "UserAudit"
+  # URL interna do CatalogAPI dentro do cluster
+  Services__CatalogApi: "http://catalog-api:80"

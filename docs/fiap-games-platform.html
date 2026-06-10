@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIAP Games Platform — Documentação Técnica</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1a1a2e;
+      background: #fff;
+      padding: 40px 60px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    /* ── Cover ── */
+    .cover {
+      text-align: center;
+      padding: 60px 0 40px;
+      border-bottom: 3px solid #4361ee;
+      margin-bottom: 40px;
+      page-break-after: always;
+    }
+    .cover h1 {
+      font-size: 32px;
+      color: #4361ee;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .cover .subtitle {
+      font-size: 16px;
+      color: #6c757d;
+      margin-bottom: 24px;
+    }
+    .cover .meta {
+      display: inline-block;
+      background: #f0f4ff;
+      border-radius: 8px;
+      padding: 14px 28px;
+      font-size: 12px;
+      color: #444;
+    }
+    .cover .meta strong { color: #4361ee; }
+
+    /* ── Headings ── */
+    h1 { font-size: 24px; color: #4361ee; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e0e7ff; }
+    h2 { font-size: 18px; color: #3a0ca3; margin: 28px 0 10px; }
+    h3 { font-size: 14px; color: #1a1a2e; margin: 18px 0 8px; font-weight: 700; }
+
+    p { margin: 8px 0; }
+
+    /* ── Code ── */
+    code {
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      background: #f0f4ff;
+      border: 1px solid #dbe4ff;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 12px;
+      color: #3a0ca3;
+    }
+    pre {
+      background: #1a1a2e;
+      color: #a8dadc;
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 12px 0;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    pre .comment { color: #6c757d; }
+    pre .cmd     { color: #90e0ef; }
+    pre .string  { color: #f4a261; }
+    pre .kw      { color: #f72585; }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 12px;
+    }
+    thead tr { background: #4361ee; color: #fff; }
+    th { padding: 9px 12px; text-align: left; font-weight: 600; }
+    td { padding: 8px 12px; border-bottom: 1px solid #e9ecef; }
+    tr:nth-child(even) td { background: #f8f9fa; }
+    tr:hover td { background: #f0f4ff; }
+
+    /* ── Callouts ── */
+    .callout {
+      border-left: 4px solid;
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .callout.info    { border-color: #4361ee; background: #eef2ff; }
+    .callout.warning { border-color: #f77f00; background: #fff7ed; }
+    .callout.success { border-color: #40916c; background: #ecfdf5; }
+    .callout.danger  { border-color: #e63946; background: #fff1f0; }
+    .callout strong  { display: block; margin-bottom: 4px; font-size: 12px; }
+
+    /* ── Diagrams ── */
+    .diagram {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      color: #1a1a2e;
+      white-space: pre;
+    }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px;
+    }
+    .badge.blue   { background: #dbe4ff; color: #4361ee; }
+    .badge.purple { background: #e7d8fd; color: #6d28d9; }
+    .badge.green  { background: #d1fae5; color: #065f46; }
+    .badge.orange { background: #ffedd5; color: #c2410c; }
+    .badge.red    { background: #fee2e2; color: #991b1b; }
+
+    /* ── Section ── */
+    .section-break { page-break-before: always; }
+
+    /* ── File tree ── */
+    .filetree {
+      background: #1a1a2e;
+      color: #a8dadc;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.9;
+      margin: 12px 0;
+    }
+    .filetree .dir  { color: #90e0ef; font-weight: 600; }
+    .filetree .file { color: #caf0f8; }
+    .filetree .note { color: #6c757d; font-style: italic; }
+
+    /* ── Port table ── */
+    .port-card {
+      display: inline-block;
+      background: #f0f4ff;
+      border: 1px solid #dbe4ff;
+      border-radius: 8px;
+      padding: 10px 18px;
+      margin: 6px;
+      text-align: center;
+      min-width: 140px;
+    }
+    .port-card .svc { font-weight: 700; color: #4361ee; font-size: 13px; }
+    .port-card .url { font-family: monospace; font-size: 12px; color: #3a0ca3; }
+
+    /* ── Print ── */
+    @media print {
+      body { padding: 20px 30px; }
+      pre, .filetree, .diagram { page-break-inside: avoid; }
+      h1, h2 { page-break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ CAPA ═══════════════════════════════════ -->
+<div class="cover">
+  <div style="font-size:48px;margin-bottom:16px;">🎮</div>
+  <h1>FIAP Games Platform</h1>
+  <p class="subtitle">Documentação Técnica de Arquitetura e Orquestração</p>
+  <div class="meta">
+    <strong>Versão 1.0</strong> &nbsp;|&nbsp; Junho 2026 &nbsp;|&nbsp;
+    Microserviços · Kubernetes · Kafka · Docker
+  </div>
+  <br/><br/>
+  <p style="color:#6c757d;font-size:12px;">
+    FIAP PosTech &nbsp;·&nbsp; Arquitetura de Microserviços
+  </p>
+</div>
+
+<!-- ═══════════════════════════════ ÍNDICE ═══════════════════════════════ -->
+<h1>Índice</h1>
+<ol style="line-height:2.2;padding-left:20px;color:#3a0ca3;">
+  <li>Visão Geral da Plataforma</li>
+  <li>Repositórios e Estrutura de Projetos</li>
+  <li>Arquitetura Clean Architecture — CatalogAPI</li>
+  <li>Fluxo de Compra via Kafka</li>
+  <li>Containerização com Docker</li>
+  <li>Orquestração com Kubernetes</li>
+  <li>Manifiestos Kubernetes — Estrutura Detalhada</li>
+  <li>Como Executar — Docker Compose</li>
+  <li>Como Executar — Kubernetes</li>
+  <li>Próximos Passos (UserAPI, PaymentAPI, NotificationAPI)</li>
+</ol>
+
+<!-- ═══════════════════════════════ 1. VISÃO GERAL ═══════════════════════ -->
+<h1 class="section-break">1. Visão Geral da Plataforma</h1>
+
+<p>
+  A plataforma FIAP Games é composta por quatro microserviços que se comunicam
+  via <strong>Apache Kafka</strong>, com infraestrutura de suporte centralizada
+  (SQL Server, MongoDB e Redis). O repositório <code>FIAP.Orchestration</code>
+  é responsável por toda a infraestrutura compartilhada.
+</p>
+
+<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                    FIAP Games Platform                          │
+│                                                                 │
+│  ┌──────────────┐     ┌──────────────┐     ┌────────────────┐  │
+│  │  CatalogAPI  │────▶│    Kafka     │────▶│  PaymentAPI    │  │
+│  │  :5001/8080  │     │  :9092       │     │  :5003/8080    │  │
+│  └──────┬───────┘     └──────┬───────┘     └───────┬────────┘  │
+│         │                   │                      │           │
+│         ▼                   ▼                      ▼           │
+│  ┌──────────────┐     ┌──────────────┐     ┌────────────────┐  │
+│  │   UserAPI    │     │NotificationAPI│    │   SQL Server   │  │
+│  │  :5002/8080  │     │  :5004/8080  │     │  MongoDB/Redis │  │
+│  └──────────────┘     └──────────────┘     └────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘</div>
+
+<h2>Stack Tecnológica</h2>
+<table>
+  <thead><tr><th>Tecnologia</th><th>Versão</th><th>Uso</th></tr></thead>
+  <tbody>
+    <tr><td>.NET / ASP.NET Core</td><td>10.0</td><td>Runtime de todos os microserviços</td></tr>
+    <tr><td>Entity Framework Core</td><td>10.0</td><td>ORM — SQL Server</td></tr>
+    <tr><td>AutoMapper</td><td>12.0.1</td><td>Mapeamento Entity ↔ DTO</td></tr>
+    <tr><td>Confluent.Kafka</td><td>2.x</td><td>Producer/Consumer Kafka</td></tr>
+    <tr><td>MongoDB.Driver</td><td>3.x</td><td>Audit logs em MongoDB</td></tr>
+    <tr><td>Docker</td><td>—</td><td>Containerização</td></tr>
+    <tr><td>Kubernetes</td><td>1.28+</td><td>Orquestração de containers</td></tr>
+    <tr><td>Kustomize</td><td>—</td><td>Composição de manifestos K8s</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════ 2. REPOSITÓRIOS ═══════════════════════ -->
+<h1 class="section-break">2. Repositórios e Estrutura de Projetos</h1>
+
+<h2>Workspace</h2>
+<div class="filetree">
+<span class="dir">C:\Users\mathf\source\repos\</span>
+│
+├── <span class="dir">FIAP.CatalogAPI\</span>          <span class="note">← Microserviço de catálogo (existente)</span>
+│   ├── <span class="dir">src\</span>
+│   │   ├── <span class="dir">FIAP.CatalogAPI.Domain\</span>
+│   │   ├── <span class="dir">FIAP.CatalogAPI.Application\</span>
+│   │   ├── <span class="dir">FIAP.CatalogAPI.Infrastructure\</span>
+│   │   ├── <span class="dir">FIAP.CatalogAPI.Api\</span>
+│   │   └── <span class="dir">FIAP.CatalogAPI.Tests\</span>
+│   ├── <span class="dir">k8s\</span>                  <span class="note">← Manifestos K8s do próprio serviço</span>
+│   │   ├── <span class="file">configmap.yaml</span>
+│   │   ├── <span class="file">secret.yaml</span>
+│   │   ├── <span class="file">deployment.yaml</span>
+│   │   └── <span class="file">service.yaml</span>
+│   ├── <span class="file">Dockerfile</span>            <span class="note">← Multi-stage build</span>
+│   └── <span class="file">.dockerignore</span>
+│
+└── <span class="dir">FIAP.Orchestration\</span>        <span class="note">← Responsabilidade de infraestrutura (novo)</span>
+    ├── <span class="file">docker-compose.yml</span>    <span class="note">← Stack completa</span>
+    └── <span class="dir">k8s\</span>
+        ├── <span class="file">00-namespace.yaml</span>
+        ├── <span class="file">kustomization.yaml</span> <span class="note">← Aplica tudo com 1 comando</span>
+        ├── <span class="dir">configmaps\</span>        <span class="note">← Dados não-sensíveis</span>
+        ├── <span class="dir">secrets\</span>           <span class="note">← Dados sensíveis</span>
+        ├── <span class="dir">infrastructure\</span>    <span class="note">← SQL, Mongo, Redis, Kafka</span>
+        └── <span class="dir">services\</span>          <span class="note">← Todos os microserviços</span></div>
+
+<div class="callout info">
+  <strong>ℹ️ Princípio de Separação de Responsabilidades</strong>
+  Cada repositório de serviço possui seu próprio <code>k8s/</code> com os manifestos
+  específicos daquele serviço. O <code>FIAP.Orchestration</code> centraliza a
+  infraestrutura compartilhada e o ambiente completo, sem duplicar o código de negócio.
+</div>
+
+<!-- ═══════════════════════════════ 3. CLEAN ARCH ═══════════════════════════ -->
+<h1 class="section-break">3. Arquitetura Clean Architecture — CatalogAPI</h1>
+
+<div class="diagram">
+  ┌──────────────────────────────────────────────────────────┐
+  │                    CatalogAPI.Api                        │
+  │   GameController · PurchaseController · ExceptionMiddle  │
+  └─────────────────────────┬────────────────────────────────┘
+                            │ usa
+  ┌─────────────────────────▼────────────────────────────────┐
+  │                CatalogAPI.Application                    │
+  │   IGameService · IPurchaseService · IKafkaProducerService│
+  │   GameService  · PurchaseService  · DTOs · AutoMapper    │
+  └──────────────┬──────────────────────────────┬────────────┘
+                 │ usa                          │ depende de
+  ┌──────────────▼──────────┐   ┌───────────────▼────────────┐
+  │   CatalogAPI.Domain     │   │  CatalogAPI.Infrastructure  │
+  │   Entities · Events     │   │  EF Core · Repositories     │
+  │   Interfaces · Exceptions│  │  MongoAuditService · Kafka  │
+  └─────────────────────────┘   └─────────────────────────────┘</div>
+
+<h2>Responsabilidade de cada Camada</h2>
+<table>
+  <thead><tr><th>Projeto</th><th>Responsabilidade</th><th>Dependências externas</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>Domain</code></td>
+      <td>Entidades, interfaces de repositório, eventos de domínio, exceções</td>
+      <td>Nenhuma</td>
+    </tr>
+    <tr>
+      <td><code>Application</code></td>
+      <td>Serviços de aplicação, DTOs, mapeamentos AutoMapper</td>
+      <td>AutoMapper, DI.Abstractions</td>
+    </tr>
+    <tr>
+      <td><code>Infrastructure</code></td>
+      <td>EF Core + SQL Server, MongoDB audit, Kafka producer/consumer, Repositórios</td>
+      <td>EF Core, MongoDB.Driver, Confluent.Kafka</td>
+    </tr>
+    <tr>
+      <td><code>Api</code></td>
+      <td>Controllers REST, middleware global de exceções, Swagger</td>
+      <td>Swashbuckle, ASP.NET Core</td>
+    </tr>
+    <tr>
+      <td><code>Tests</code></td>
+      <td>Testes unitários (14 testes, 100% passando)</td>
+      <td>xUnit, Moq, FluentAssertions</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════ 4. FLUXO KAFKA ══════════════════════════ -->
+<h1 class="section-break">4. Fluxo de Compra via Kafka</h1>
+
+<div class="diagram">
+  Cliente                 CatalogAPI              Kafka               PaymentAPI
+     │                       │                      │                      │
+     │  POST /api/purchase   │                      │                      │
+     │──────────────────────▶│                      │                      │
+     │                       │  Valida jogo + preço │                      │
+     │                       │  Gera CorrelationId  │                      │
+     │                       │─── OrderPlacedEvent ─▶│                      │
+     │                       │   { UserId, GameId,  │                      │
+     │                       │     Price, CorrId }  │                      │
+     │  202 Accepted         │                      │                      │
+     │◀──────────────────────│                      │                      │
+     │  { CorrelationId }    │                      │                      │
+     │                       │                      │──────────────────────▶│
+     │                       │                      │  consome order-placed │
+     │                       │                      │                       │
+     │                       │                      │  processa pagamento   │
+     │                       │                      │◀──────────────────────│
+     │                       │◀── PaymentProcessed ─│  publica resultado    │
+     │                       │   { CorrId, Status } │                      │
+     │                       │                      │                      │
+     │                       │  Se Approved:         │                      │
+     │                       │  Cria Library/        │                      │
+     │                       │  Adiciona LibraryGame │                      │</div>
+
+<h2>Tópicos Kafka</h2>
+<table>
+  <thead><tr><th>Tópico</th><th>Publicado por</th><th>Consumido por</th><th>Payload</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>order-placed</code></td>
+      <td>CatalogAPI</td>
+      <td>PaymentAPI</td>
+      <td><code>{ UserId, GameId, Price, CorrelationId }</code></td>
+    </tr>
+    <tr>
+      <td><code>payment-processed</code></td>
+      <td>PaymentAPI</td>
+      <td>CatalogAPI</td>
+      <td><code>{ CorrelationId, UserId, GameId, Status, Reason }</code></td>
+    </tr>
+    <tr>
+      <td><code>user-created</code></td>
+      <td>UserAPI</td>
+      <td>CatalogAPI</td>
+      <td><code>{ UserId, Email, Name }</code></td>
+    </tr>
+    <tr>
+      <td><code>notification-requested</code></td>
+      <td>PaymentAPI / CatalogAPI</td>
+      <td>NotificationAPI</td>
+      <td><code>{ UserId, Type, Message }</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Implementação do Consumer (PaymentProcessedConsumer)</h2>
+<p>
+  O <code>PaymentProcessedConsumer</code> é um <code>BackgroundService</code> registrado
+  no <code>IHostedService</code> do ASP.NET Core. Ele roda em background enquanto a API
+  está ativa e processa cada mensagem do tópico <code>payment-processed</code>:
+</p>
+<ol style="padding-left:20px;line-height:2;">
+  <li>Consome a mensagem com <strong>manual commit</strong> (offset só avança após processamento bem-sucedido)</li>
+  <li>Desserializa o <code>PaymentProcessedEvent</code> do JSON</li>
+  <li>Se <code>Status == "Approved"</code>: cria a <code>Library</code> do usuário (se não existir) e adiciona o <code>LibraryGame</code></li>
+  <li>Se rejeitado: apenas loga o motivo — nenhuma ação no banco</li>
+  <li>Em caso de erro: espera 2s e retenta (não perde o offset)</li>
+</ol>
+
+<!-- ═══════════════════════════════ 5. DOCKER ═══════════════════════════════ -->
+<h1 class="section-break">5. Containerização com Docker</h1>
+
+<h2>Dockerfile — Multi-Stage Build</h2>
+<p>
+  O Dockerfile usa <strong>multi-stage build</strong> com duas etapas para reduzir o
+  tamanho da imagem final de ~600MB para ~100MB:
+</p>
+
+<pre><span class="comment"># Stage 1: SDK (compila e publica)</span>
+<span class="kw">FROM</span> <span class="string">mcr.microsoft.com/dotnet/sdk:10.0</span> AS build
+WORKDIR /src
+<span class="comment"># Copia só os .csproj primeiro → layer cache para restore</span>
+COPY src/.../*.csproj ...
+RUN dotnet restore
+
+COPY . .
+RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
+
+<span class="comment"># Stage 2: Runtime (apenas o necessário para executar)</span>
+<span class="kw">FROM</span> <span class="string">mcr.microsoft.com/dotnet/aspnet:10.0</span> AS final
+<span class="comment"># Cria usuário não-root por segurança</span>
+RUN adduser --system appuser
+USER appuser
+
+COPY --from=build /app/publish .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "FIAP.CatalogAPI.Api.dll"]</pre>
+
+<table>
+  <thead><tr><th>Stage</th><th>Imagem base</th><th>Tamanho</th><th>Finalidade</th></tr></thead>
+  <tbody>
+    <tr><td><code>build</code></td><td>dotnet/sdk:10.0</td><td>~600MB</td><td>Compilar e publicar o projeto</td></tr>
+    <tr><td><code>final</code></td><td>dotnet/aspnet:10.0</td><td>~80MB</td><td>Executar a aplicação em produção</td></tr>
+  </tbody>
+</table>
+
+<div class="callout success">
+  <strong>✅ Boas Práticas Aplicadas</strong>
+  Cache de layers (copia <code>.csproj</code> antes do source), <code>.dockerignore</code>
+  excluindo <code>bin/</code> e <code>obj/</code>, usuário não-root, imagem mínima de runtime,
+  <code>UseAppHost=false</code> para evitar binário nativo desnecessário.
+</div>
+
+<!-- ═══════════════════════════════ 6. KUBERNETES ══════════════════════════ -->
+<h1 class="section-break">6. Orquestração com Kubernetes</h1>
+
+<h2>Namespace</h2>
+<p>
+  Todos os recursos são criados no namespace <code>fiap-games</code>, isolando
+  o ambiente dos outros workloads do cluster.
+</p>
+
+<h2>Separação ConfigMap vs Secret</h2>
+<table>
+  <thead><tr><th>Tipo</th><th>O que armazena</th><th>Exemplos</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="badge blue">ConfigMap</span></td>
+      <td>Dados não-sensíveis, configurações de comportamento</td>
+      <td>Tópicos Kafka, hostname do MongoDB, environment, GroupId</td>
+    </tr>
+    <tr>
+      <td><span class="badge red">Secret</span></td>
+      <td>Dados sensíveis, credenciais, connection strings</td>
+      <td>Senha do SQL Server, connection string completa, senha do MongoDB</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Hierarquia de ConfigMaps</h2>
+<p>
+  Cada Pod recebe <strong>dois ConfigMaps</strong> via <code>envFrom</code>, o que evita
+  duplicação de configurações compartilhadas:
+</p>
+<div class="diagram">
+Pod catalog-api
+├── envFrom: shared-infra-config    ← Kafka topics, Redis, MongoDB host (TODOS usam)
+├── envFrom: catalog-api-config     ← GroupId e DatabaseName específicos do serviço
+└── envFrom: catalog-api-secret     ← Connection string SQL, senhas (Secret)</div>
+
+<h2>Deployments vs Pods Isolados</h2>
+<p>
+  Todos os workloads usam <code>Deployment</code>, que garante:
+</p>
+<ul style="padding-left:20px;line-height:2.2;">
+  <li><strong>Self-healing</strong>: se um Pod cai, o ReplicaSet cria outro automaticamente</li>
+  <li><strong>Rolling updates</strong>: atualização sem downtime com <code>kubectl set image</code></li>
+  <li><strong>Rollback</strong>: <code>kubectl rollout undo deployment/catalog-api</code></li>
+  <li><strong>Scaling</strong>: <code>kubectl scale deployment/catalog-api --replicas=5</code></li>
+</ul>
+
+<h2>Comunicação Entre Serviços no Cluster</h2>
+<p>
+  Dentro do cluster Kubernetes, os pods se comunicam usando os <strong>nomes dos Services</strong>
+  como hostname DNS — sem necessidade de IPs:
+</p>
+<table>
+  <thead><tr><th>De</th><th>Para</th><th>URL usada</th></tr></thead>
+  <tbody>
+    <tr><td>CatalogAPI</td><td>Kafka</td><td><code>kafka:9092</code></td></tr>
+    <tr><td>CatalogAPI</td><td>SQL Server</td><td><code>sqlserver:1433</code></td></tr>
+    <tr><td>CatalogAPI</td><td>MongoDB</td><td><code>mongodb:27017</code></td></tr>
+    <tr><td>PaymentAPI</td><td>CatalogAPI</td><td><code>http://catalog-api:80</code></td></tr>
+    <tr><td>UserAPI</td><td>CatalogAPI</td><td><code>http://catalog-api:80</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>ℹ️ Por que ClusterIP?</strong>
+  Os Services usam <code>type: ClusterIP</code> (padrão) — acessíveis apenas dentro do cluster.
+  Para expor externamente, adicione um <code>Ingress</code> com Nginx ou Traefik,
+  ou mude para <code>type: NodePort</code> em ambientes locais.
+</div>
+
+<!-- ═══════════════════════════════ 7. MANIFESTOS ═══════════════════════════ -->
+<h1 class="section-break">7. Manifestos Kubernetes — Estrutura Detalhada</h1>
+
+<div class="filetree">
+<span class="dir">k8s/</span>
+├── <span class="file">00-namespace.yaml</span>                    <span class="note">namespace: fiap-games</span>
+├── <span class="file">kustomization.yaml</span>                   <span class="note">aplica tudo em ordem com 1 comando</span>
+│
+├── <span class="dir">configmaps/</span>
+│   ├── <span class="file">shared-configmap.yaml</span>            <span class="note">Kafka topics, Redis, MongoDB host</span>
+│   ├── <span class="file">catalog-api-configmap.yaml</span>       <span class="note">GroupId, DatabaseName</span>
+│   ├── <span class="file">user-api-configmap.yaml</span>          <span class="note">+ Services__CatalogApi: http://catalog-api:80</span>
+│   ├── <span class="file">payment-api-configmap.yaml</span>       <span class="note">+ Services__UserApi: http://user-api:80</span>
+│   └── <span class="file">notification-api-configmap.yaml</span>  <span class="note">GroupId</span>
+│
+├── <span class="dir">secrets/</span>
+│   ├── <span class="file">infra-secret.yaml</span>                <span class="note">SA password, MongoDB root credentials</span>
+│   ├── <span class="file">catalog-api-secret.yaml</span>          <span class="note">connection string SQL + MongoDB creds</span>
+│   ├── <span class="file">user-api-secret.yaml</span>
+│   ├── <span class="file">payment-api-secret.yaml</span>
+│   └── <span class="file">notification-api-secret.yaml</span>
+│
+├── <span class="dir">infrastructure/</span>
+│   ├── <span class="file">sqlserver-{pvc,deployment,service}.yaml</span>   <span class="note">PVC 5Gi, réplica 1</span>
+│   ├── <span class="file">mongodb-{pvc,deployment,service}.yaml</span>     <span class="note">PVC 2Gi, réplica 1</span>
+│   ├── <span class="file">redis-{deployment,service}.yaml</span>           <span class="note">appendonly mode</span>
+│   ├── <span class="file">zookeeper-{deployment,service}.yaml</span>       <span class="note">coordenação Kafka</span>
+│   └── <span class="file">kafka-{pvc,deployment,service}.yaml</span>       <span class="note">PVC 5Gi, réplica 1</span>
+│
+└── <span class="dir">services/</span>
+    ├── <span class="file">catalog-api-{deployment,service}.yaml</span>    <span class="note">2 réplicas, fiap/catalog-api:latest</span>
+    ├── <span class="file">user-api-{deployment,service}.yaml</span>       <span class="note">2 réplicas (placeholder)</span>
+    ├── <span class="file">payment-api-{deployment,service}.yaml</span>    <span class="note">2 réplicas (placeholder)</span>
+    └── <span class="file">notification-api-{deployment,service}.yaml</span> <span class="note">1 réplica (placeholder)</span></div>
+
+<h2>Resource Limits por Serviço</h2>
+<table>
+  <thead><tr><th>Serviço</th><th>CPU Request</th><th>CPU Limit</th><th>Memory Request</th><th>Memory Limit</th></tr></thead>
+  <tbody>
+    <tr><td>catalog-api</td><td>100m</td><td>500m</td><td>128Mi</td><td>512Mi</td></tr>
+    <tr><td>user-api</td><td>100m</td><td>500m</td><td>128Mi</td><td>512Mi</td></tr>
+    <tr><td>payment-api</td><td>100m</td><td>500m</td><td>128Mi</td><td>512Mi</td></tr>
+    <tr><td>notification-api</td><td>50m</td><td>200m</td><td>64Mi</td><td>256Mi</td></tr>
+    <tr><td>SQL Server</td><td>500m</td><td>2 cores</td><td>1Gi</td><td>2Gi</td></tr>
+    <tr><td>MongoDB</td><td>100m</td><td>500m</td><td>256Mi</td><td>512Mi</td></tr>
+    <tr><td>Kafka</td><td>200m</td><td>1 core</td><td>512Mi</td><td>1Gi</td></tr>
+    <tr><td>Redis</td><td>50m</td><td>200m</td><td>64Mi</td><td>128Mi</td></tr>
+    <tr><td>Zookeeper</td><td>100m</td><td>500m</td><td>256Mi</td><td>512Mi</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════ 8. DOCKER COMPOSE ══════════════════════ -->
+<h1 class="section-break">8. Como Executar — Docker Compose</h1>
+
+<p>O <code>docker-compose.yml</code> em <code>FIAP.Orchestration/</code> sobe toda a stack
+com healthchecks e dependências corretas.</p>
+
+<h2>Passo a Passo</h2>
+
+<pre><span class="comment"># 1. Entrar na pasta de orquestração</span>
+<span class="cmd">cd C:\Users\mathf\source\repos\FIAP.Orchestration</span>
+
+<span class="comment"># 2. Subir toda a stack (infra + CatalogAPI)</span>
+<span class="cmd">docker-compose up -d</span>
+
+<span class="comment"># 3. Acompanhar os logs</span>
+<span class="cmd">docker-compose logs -f catalog-api</span>
+
+<span class="comment"># 4. Verificar status de todos os containers</span>
+<span class="cmd">docker-compose ps</span>
+
+<span class="comment"># 5. Parar tudo mantendo volumes</span>
+<span class="cmd">docker-compose down</span>
+
+<span class="comment"># 6. Parar e remover volumes (reset completo)</span>
+<span class="cmd">docker-compose down -v</span></pre>
+
+<h2>Endereços Disponíveis</h2>
+<div style="margin:12px 0;">
+  <div class="port-card">
+    <div class="svc">CatalogAPI</div>
+    <div class="url">localhost:5001</div>
+    <div style="font-size:11px;color:#666">Swagger: /swagger</div>
+  </div>
+  <div class="port-card">
+    <div class="svc">Kafka UI</div>
+    <div class="url">localhost:8090</div>
+    <div style="font-size:11px;color:#666">Inspecionar tópicos</div>
+  </div>
+  <div class="port-card">
+    <div class="svc">SQL Server</div>
+    <div class="url">localhost:1433</div>
+    <div style="font-size:11px;color:#666">sa / PosTech@123</div>
+  </div>
+  <div class="port-card">
+    <div class="svc">MongoDB</div>
+    <div class="url">localhost:27018</div>
+    <div style="font-size:11px;color:#666">admin / PosTech@123</div>
+  </div>
+  <div class="port-card">
+    <div class="svc">Redis</div>
+    <div class="url">localhost:6379</div>
+    <div style="font-size:11px;color:#666">sem autenticação</div>
+  </div>
+  <div class="port-card">
+    <div class="svc">Kafka</div>
+    <div class="url">localhost:9092</div>
+    <div style="font-size:11px;color:#666">bootstrap server</div>
+  </div>
+</div>
+
+<div class="callout warning">
+  <strong>⚠️ Ordem de Inicialização</strong>
+  O CatalogAPI aguarda SQL Server, MongoDB e Kafka estarem <em>healthy</em>
+  (via <code>depends_on.condition: service_healthy</code>) antes de iniciar.
+  Na primeira execução, o SQL Server pode demorar ~30s para inicializar.
+</div>
+
+<!-- ═══════════════════════════════ 9. KUBERNETES HOWTO ═══════════════════ -->
+<h1 class="section-break">9. Como Executar — Kubernetes</h1>
+
+<h2>Pré-requisitos</h2>
+<ul style="padding-left:20px;line-height:2.2;">
+  <li>Cluster local rodando: Docker Desktop (K8s habilitado), Kind, Minikube ou k3d</li>
+  <li><code>kubectl</code> configurado (<code>kubectl cluster-info</code> deve retornar OK)</li>
+  <li>Kustomize integrado ao kubectl 1.14+ (<code>kubectl apply -k</code>)</li>
+</ul>
+
+<h2>Deploy Completo</h2>
+
+<pre><span class="comment"># ── Passo 1: Build da imagem do CatalogAPI ──────────────────────────</span>
+<span class="cmd">cd C:\Users\mathf\source\repos\FIAP.CatalogAPI</span>
+<span class="cmd">docker build -t fiap/catalog-api:latest .</span>
+
+<span class="comment"># ── Passo 2: Se usar Kind ou k3d, carregar a imagem no cluster ───────</span>
+<span class="cmd">kind load docker-image fiap/catalog-api:latest</span>
+<span class="comment"># ou para k3d:</span>
+<span class="cmd">k3d image import fiap/catalog-api:latest -c &lt;nome-do-cluster&gt;</span>
+
+<span class="comment"># ── Passo 3: Aplicar todos os manifestos com Kustomize ───────────────</span>
+<span class="cmd">cd C:\Users\mathf\source\repos\FIAP.Orchestration</span>
+<span class="cmd">kubectl apply -k k8s/</span>
+
+<span class="comment"># ── Passo 4: Aguardar pods iniciarem ─────────────────────────────────</span>
+<span class="cmd">kubectl get pods -n fiap-games -w</span>
+
+<span class="comment"># ── Passo 5: Port-forward para acessar a API ─────────────────────────</span>
+<span class="cmd">kubectl port-forward svc/catalog-api 5001:80 -n fiap-games</span>
+<span class="comment"># Abrir: http://localhost:5001/swagger</span></pre>
+
+<h2>Comandos Úteis de Diagnóstico</h2>
+
+<pre><span class="comment"># Ver todos os recursos no namespace</span>
+<span class="cmd">kubectl get all -n fiap-games</span>
+
+<span class="comment"># Ver logs de um pod específico</span>
+<span class="cmd">kubectl logs -f deployment/catalog-api -n fiap-games</span>
+
+<span class="comment"># Ver eventos de um pod com problema</span>
+<span class="cmd">kubectl describe pod &lt;nome-do-pod&gt; -n fiap-games</span>
+
+<span class="comment"># Escalar o CatalogAPI para 3 réplicas</span>
+<span class="cmd">kubectl scale deployment/catalog-api --replicas=3 -n fiap-games</span>
+
+<span class="comment"># Atualizar imagem (rolling update sem downtime)</span>
+<span class="cmd">kubectl set image deployment/catalog-api catalog-api=fiap/catalog-api:v2 -n fiap-games</span>
+
+<span class="comment"># Rollback em caso de problemas</span>
+<span class="cmd">kubectl rollout undo deployment/catalog-api -n fiap-games</span>
+
+<span class="comment"># Remover tudo</span>
+<span class="cmd">kubectl delete -k k8s/</span></pre>
+
+<div class="callout warning">
+  <strong>⚠️ Sobre Secrets em Produção</strong>
+  Os arquivos <code>secrets/*.yaml</code> contêm credenciais em texto plano com
+  <code>stringData</code>. Para ambientes reais, use
+  <strong>Sealed Secrets</strong>, <strong>External Secrets Operator</strong> ou
+  <strong>HashiCorp Vault</strong> — e nunca commite credenciais reais no Git.
+</div>
+
+<!-- ═══════════════════════════════ 10. PRÓXIMOS PASSOS ══════════════════ -->
+<h1 class="section-break">10. Próximos Passos</h1>
+
+<h2>Como adicionar UserAPI / PaymentAPI / NotificationAPI</h2>
+
+<p>Cada novo microserviço segue o mesmo padrão do CatalogAPI:</p>
+
+<table>
+  <thead><tr><th>Passo</th><th>Ação</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Criar repositório <code>FIAP.UserAPI</code> com a mesma Clean Architecture</td></tr>
+    <tr><td>2</td><td>Adicionar <code>Dockerfile</code> multi-stage e <code>.dockerignore</code></td></tr>
+    <tr><td>3</td><td>Criar <code>k8s/</code> com configmap, secret, deployment e service</td></tr>
+    <tr><td>4</td><td>No <code>FIAP.Orchestration/docker-compose.yml</code>: descomentar o bloco do serviço</td></tr>
+    <tr><td>5</td><td>Fazer o <code>docker build</code> e <code>kubectl apply</code></td></tr>
+  </tbody>
+</table>
+
+<p>Os manifestos em <code>FIAP.Orchestration/k8s/services/user-api-*.yaml</code> já estão
+prontos — basta ter a imagem <code>fiap/user-api:latest</code> disponível.</p>
+
+<h2>Roadmap de Comunicação Kafka</h2>
+<table>
+  <thead><tr><th>Serviço</th><th>Publica</th><th>Consome</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="badge blue">CatalogAPI</span></td>
+      <td><code>order-placed</code></td>
+      <td><code>payment-processed</code></td>
+    </tr>
+    <tr>
+      <td><span class="badge purple">UserAPI</span></td>
+      <td><code>user-created</code></td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td><span class="badge orange">PaymentAPI</span></td>
+      <td><code>payment-processed</code>, <code>notification-requested</code></td>
+      <td><code>order-placed</code></td>
+    </tr>
+    <tr>
+      <td><span class="badge green">NotificationAPI</span></td>
+      <td>—</td>
+      <td><code>notification-requested</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Melhorias Sugeridas para Produção</h2>
+<ul style="padding-left:20px;line-height:2.2;">
+  <li>Adicionar <strong>Ingress</strong> (Nginx/Traefik) para expor APIs externamente com TLS</li>
+  <li>Substituir <strong>Deployments de banco</strong> por StatefulSets para melhor gerenciamento de estado</li>
+  <li>Usar <strong>Sealed Secrets</strong> ou <strong>External Secrets Operator</strong> para secrets seguros em Git</li>
+  <li>Adicionar <strong>HorizontalPodAutoscaler</strong> para escala automática baseada em CPU/memória</li>
+  <li>Configurar <strong>PodDisruptionBudget</strong> para manter disponibilidade durante atualizações</li>
+  <li>Adicionar <strong>NetworkPolicy</strong> para isolar comunicação entre namespaces</li>
+  <li>Subir Kafka para <strong>3 brokers</strong> com fator de replicação 3 para alta disponibilidade</li>
+</ul>
+
+<!-- ═══════════════════════════════ RODAPÉ ════════════════════════════════ -->
+<hr style="margin-top:40px;border:none;border-top:1px solid #dee2e6;" />
+<p style="text-align:center;color:#adb5bd;font-size:11px;margin-top:12px;">
+  FIAP Games Platform &nbsp;·&nbsp; Documentação Técnica &nbsp;·&nbsp; Gerado em Junho 2026
+</p>
+
+</body>
+</html>
