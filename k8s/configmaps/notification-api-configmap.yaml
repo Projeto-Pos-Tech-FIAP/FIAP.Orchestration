@@ -8,5 +8,4 @@ metadata:
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
   ASPNETCORE_URLS: "http://+:8080"
-  Kafka__GroupId: "notification-api-group"
-  MongoDb__DatabaseName: "NotificationAudit"
+  Kafka__GroupId: "notifications-api-group"

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: fiap-games
+  labels:
+    app: keycloak
+    tier: infrastructure
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

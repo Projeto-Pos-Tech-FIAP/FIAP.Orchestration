@@ -8,7 +8,9 @@ metadata:
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
   ASPNETCORE_URLS: "http://+:8080"
-  Kafka__GroupId: "user-api-group"
-  MongoDb__DatabaseName: "UserAudit"
-  # URL interna do CatalogAPI dentro do cluster
-  Services__CatalogApi: "http://catalog-api:80"
+  Kafka__GroupId: "usuarios-api-group"
+  Keycloak__Authority: "http://keycloak:80/realms/TechChallengeFiap"
+  Keycloak__Audience: "tech-challenge"
+  Keycloak__BaseUrl: "http://keycloak:80/"
+  Keycloak__Realm: "TechChallengeFiap"
+  Keycloak__ClientId: "tech-challenge"

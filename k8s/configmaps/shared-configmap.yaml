@@ -12,6 +12,8 @@ data:
   Kafka__TopicPaymentProcessed: "payment-processed"
   Kafka__TopicUserCreated: "user-created"
   Kafka__TopicNotificationRequested: "notification-requested"
+  Kafka__UserCreatedTopic: "user-created"
+  Kafka__PaymentProcessedTopic: "payment-processed"
 
   # MongoDB
   MongoDb__Host: "mongodb"

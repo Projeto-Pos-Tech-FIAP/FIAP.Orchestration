@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak-postgres
+  namespace: fiap-games
+  labels:
+    app: keycloak-postgres
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak-postgres
+  template:
+    metadata:
+      labels:
+        app: keycloak-postgres
+    spec:
+      containers:
+        - name: keycloak-postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: infra-secret
+                  key: KEYCLOAK_POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: infra-secret
+                  key: KEYCLOAK_POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: infra-secret
+                  key: KEYCLOAK_POSTGRES_PASSWORD
+          volumeMounts:
+            - name: keycloak-postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - keycloak
+                - -d
+                - keycloak
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+      volumes:
+        - name: keycloak-postgres-data
+          persistentVolumeClaim:
+            claimName: keycloak-postgres-pvc

@@ -1,14 +1,21 @@
-version: "3.8"
-
-x-common-env: &kafka-env
+x-kafka-env: &kafka-env
   Kafka__BootstrapServers: kafka:9093
   Kafka__TopicOrderPlaced: order-placed
   Kafka__TopicPaymentProcessed: payment-processed
+  Kafka__TopicUserCreated: user-created
+  Kafka__TopicNotificationRequested: notification-requested
+  Kafka__UserCreatedTopic: user-created
+  Kafka__PaymentProcessedTopic: payment-processed
+
+x-keycloak-env: &keycloak-client-env
+  Keycloak__Authority: http://keycloak:8080/realms/TechChallengeFiap
+  Keycloak__Audience: tech-challenge
+  Keycloak__BaseUrl: http://keycloak:8080/
+  Keycloak__Realm: TechChallengeFiap
+  Keycloak__ClientId: tech-challenge
+  Keycloak__ClientSecret: TDB539JXqWeqNmrzFwtT7UNMQXtIwj1Y
 
 services:
-
-  # ── Infraestrutura ───────────────────────────────────────────────────────────
-
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: fiap-sqlserver
@@ -23,7 +30,7 @@ services:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'PosTech@123' -Q 'SELECT 1' -No || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   mongodb:
     image: mongo:7
@@ -105,24 +112,43 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
 
+  keycloak-postgres:
+    image: postgres:15
+    container_name: fiap-keycloak-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    ports:
+      - "5432:5432"
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:26.0
     container_name: fiap-keycloak
-    command: start-dev
+    command: start-dev --import-realm
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: "PosTech@123"
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
       KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./k8s/keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "8180:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 15
-      start_period: 60s
-
-  # ── Microserviços ─────────────────────────────────────────────────────────────
+      - "8081:8080"
 
   catalog-api:
     build:
@@ -137,12 +163,13 @@ services:
       kafka:
         condition: service_healthy
       keycloak:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "5001:8080"
     environment:
-      <<: *kafka-env
+      <<: [*kafka-env, *keycloak-client-env]
       ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=CatalogAPI;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
       MongoDb__Host: mongodb
       MongoDb__Port: "27017"
@@ -150,69 +177,48 @@ services:
       MongoDb__Password: "PosTech@123"
       MongoDb__DatabaseName: CatalogAudit
       MongoDb__CollectionName: AuditLogs
-      Kafka__GroupId: catalog-api-group
-      Keycloak__Authority: "http://keycloak:8080/realms/fiap-games"
-      Keycloak__Audience: catalog-api
-      Keycloak__ClientId: catalog-api
-      Keycloak__ClientSecret: catalog-api-secret
-      Keycloak__BaseUrl: "http://keycloak:8080/"
-      Keycloak__Realm: fiap-games
     restart: on-failure
 
-  # user-api:
-  #   build:
-  #     context: ../FIAP.UserAPI
-  #     dockerfile: Dockerfile
-  #   container_name: fiap-user-api
-  #   depends_on:
-  #     sqlserver:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #   ports:
-  #     - "5002:8080"
-  #   environment:
-  #     <<: *kafka-env
-  #     ASPNETCORE_ENVIRONMENT: Development
-  #     ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=UserAPI;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
-  #   restart: on-failure
+  usuarios-api:
+    build:
+      context: ../FIAP.UsuariosAPI
+      dockerfile: Dockerfile
+    container_name: fiap-usuarios-api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    ports:
+      - "5002:8080"
+    environment:
+      <<: [*kafka-env, *keycloak-client-env]
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=UsuariosDb;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
+    restart: on-failure
 
-  # payment-api:
-  #   build:
-  #     context: ../FIAP.PaymentAPI
-  #     dockerfile: Dockerfile
-  #   container_name: fiap-payment-api
-  #   depends_on:
-  #     sqlserver:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #   ports:
-  #     - "5003:8080"
-  #   environment:
-  #     <<: *kafka-env
-  #     ASPNETCORE_ENVIRONMENT: Development
-  #     ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=PaymentAPI;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
-  #   restart: on-failure
-
-  # notification-api:
-  #   build:
-  #     context: ../FIAP.NotificationAPI
-  #     dockerfile: Dockerfile
-  #   container_name: fiap-notification-api
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   ports:
-  #     - "5004:8080"
-  #   environment:
-  #     <<: *kafka-env
-  #     ASPNETCORE_ENVIRONMENT: Development
-  #   restart: on-failure
+  notifications-api:
+    build:
+      context: ../FIAP.NotificationsAPI
+      dockerfile: Dockerfile
+    container_name: fiap-notifications-api
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "5004:8080"
+    environment:
+      <<: *kafka-env
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    restart: on-failure
 
 volumes:
   sqlserver_data:
   mongo_data:
   redis_data:
   kafka_data:
-  keycloak_data:
+  keycloak_postgres_data:
