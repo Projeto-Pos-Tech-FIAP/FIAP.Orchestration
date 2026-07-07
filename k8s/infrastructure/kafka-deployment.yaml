@@ -16,6 +16,7 @@ spec:
       labels:
         app: kafka
     spec:
+      enableServiceLinks: false
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.6.1
@@ -39,6 +40,8 @@ spec:
               value: "1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx512m -Xms256m"
           volumeMounts:
             - name: kafka-data
               mountPath: /var/lib/kafka/data

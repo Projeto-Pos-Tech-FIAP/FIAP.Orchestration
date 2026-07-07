@@ -34,8 +34,8 @@ spec:
               cpu: "500m"
               memory: "512Mi"
           readinessProbe:
-            exec:
-              command: ["sh", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+            tcpSocket:
+              port: 2181
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 5

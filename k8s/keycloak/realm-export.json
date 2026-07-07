@@ -463,7 +463,6 @@
     {
       "id": "45b0c324-4d29-4604-bc60-2e2464888621",
       "name": "Administrator",
-      "description": "Master",
       "path": "/Administrator",
       "subGroups": [],
       "attributes": {},
@@ -477,7 +476,6 @@
     {
       "id": "0b93d7b8-d391-4246-80a1-4e8bf482d42b",
       "name": "User",
-      "description": "System client",
       "path": "/User",
       "subGroups": [],
       "attributes": {},
