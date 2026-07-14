@@ -1,4 +1,3 @@
-# Placeholder — descomentar quando FIAP.PaymentAPI for criado
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +7,7 @@ metadata:
     app: payment-api
     tier: service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: payment-api

@@ -6,7 +6,7 @@ metadata:
   labels:
     app: catalog-api
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "catalog-api-group"
   MongoDb__DatabaseName: "CatalogAudit"

@@ -8,6 +8,9 @@ metadata:
     tier: infrastructure
 spec:
   replicas: 1
+  # Evita dois pods disputando o mesmo PVC ReadWriteOnce durante um rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: mongodb
@@ -45,6 +48,8 @@ spec:
           readinessProbe:
             exec:
               command: ["mongosh", "--eval", "db.adminCommand('ping')"]
+            # mongosh demora mais que o timeout padrão de 1s do exec probe pra iniciar e responder.
+            timeoutSeconds: 10
             initialDelaySeconds: 15
             periodSeconds: 10
             failureThreshold: 5

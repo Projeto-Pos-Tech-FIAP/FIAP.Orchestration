@@ -6,10 +6,6 @@ metadata:
   labels:
     app: payment-api
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "payment-api-group"
-  MongoDb__DatabaseName: "PaymentAudit"
-  # URLs internas dos outros serviços
-  Services__CatalogApi: "http://catalog-api:80"
-  Services__UserApi: "http://user-api:80"

@@ -18,12 +18,14 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.0
+          image: quay.io/keycloak/keycloak:26.5
           args:
             - start-dev
             - --import-realm
           ports:
             - containerPort: 8080
+            - containerPort: 9000
+              name: management
           env:
             - name: KEYCLOAK_ADMIN
               valueFrom:
@@ -56,9 +58,11 @@ spec:
               mountPath: /opt/keycloak/data/import
               readOnly: true
           readinessProbe:
+            # Desde o Keycloak 26.x os endpoints de health ficam na porta de management (9000),
+            # não mais na porta principal (8080) — apontar pra 8080 dava 404 sempre.
             httpGet:
               path: /health/ready
-              port: 8080
+              port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
             failureThreshold: 10

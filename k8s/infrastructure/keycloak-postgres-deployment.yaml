@@ -8,6 +8,9 @@ metadata:
     tier: infrastructure
 spec:
   replicas: 1
+  # Evita dois pods disputando o mesmo PVC ReadWriteOnce durante um rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: keycloak-postgres

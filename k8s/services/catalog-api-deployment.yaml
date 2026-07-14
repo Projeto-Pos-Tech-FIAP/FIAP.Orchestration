@@ -7,7 +7,7 @@ metadata:
     app: catalog-api
     tier: service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: catalog-api
@@ -23,13 +23,10 @@ spec:
           ports:
             - containerPort: 8080
           envFrom:
-            # ConfigMap compartilhado (Kafka topics, Redis, MongoDB host)
             - configMapRef:
                 name: shared-infra-config
-            # ConfigMap específico (GroupId, DatabaseName, env)
             - configMapRef:
                 name: catalog-api-config
-            # Secret (connection strings, senhas)
             - secretRef:
                 name: catalog-api-secret
           resources:

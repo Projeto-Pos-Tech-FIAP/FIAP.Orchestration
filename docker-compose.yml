@@ -93,8 +93,11 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # KAFKA_AUTO_CREATE_TOPICS_ENABLE já cria os tópicos (order-placed, payment-processed,
+      # user-created, notification-requested) sob demanda, no primeiro publish de cada um.
+      # KAFKA_CREATE_TOPICS não existe nesta imagem (confluentinc/cp-kafka) — é uma variável
+      # da imagem wurstmeister/kafka; aqui era ignorada silenciosamente, então foi removida.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CREATE_TOPICS: "order-placed:1:1,payment-processed:1:1,user-created:1:1,notification-requested:1:1"
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -135,7 +138,9 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.5
+    build:
+      context: .
+      dockerfile: keycloak/Dockerfile
     container_name: fiap-keycloak
     command: start-dev --import-realm
     depends_on:
@@ -149,8 +154,6 @@ services:
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
       KC_HEALTH_ENABLED: "true"
-    volumes:
-      - ./k8s/keycloak:/opt/keycloak/data/import:ro
     ports:
       - "8081:8080"
 

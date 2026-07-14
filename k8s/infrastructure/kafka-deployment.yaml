@@ -8,6 +8,11 @@ metadata:
     tier: infrastructure
 spec:
   replicas: 1
+  # RollingUpdate (padrão) sobe o pod novo antes de matar o velho — como o PVC é ReadWriteOnce,
+  # os dois tentam usar o mesmo diretório de dados ao mesmo tempo e o Kafka trava no lock file.
+  # Recreate garante que o pod antigo é removido antes do novo subir.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: kafka
@@ -27,15 +32,18 @@ spec:
               value: "1"
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "zookeeper:2181"
-            # Dentro do cluster K8s, todos os pods se conectam via ClusterIP (porta 9092)
+            # Dentro do cluster K8s, os outros pods se conectam via ClusterIP (porta 9092).
+            # O listener INTERNAL (localhost:9093) é só para o próprio broker falar consigo mesmo
+            # (inter-broker/controller) — evita depender de hairpin NAT do pod para o próprio Service,
+            # que falha nesse cluster (o broker nunca conseguia se auto-conectar via "kafka:9092").
             - name: KAFKA_LISTENERS
-              value: "PLAINTEXT://0.0.0.0:9092"
+              value: "PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:9093"
             - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://kafka:9092"
+              value: "PLAINTEXT://kafka:9092,INTERNAL://localhost:9093"
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
-              value: "PLAINTEXT:PLAINTEXT"
+              value: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT"
             - name: KAFKA_INTER_BROKER_LISTENER_NAME
-              value: "PLAINTEXT"
+              value: "INTERNAL"
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
               value: "1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
@@ -58,6 +66,10 @@ spec:
                 - kafka-broker-api-versions
                 - --bootstrap-server
                 - localhost:9092
+            # kafka-broker-api-versions é uma ferramenta JVM — o timeout padrão de exec probe (1s)
+            # não é suficiente pra ela subir a JVM e responder, o que fazia o probe falhar sempre
+            # mesmo com o broker saudável.
+            timeoutSeconds: 10
             initialDelaySeconds: 30
             periodSeconds: 15
             failureThreshold: 5

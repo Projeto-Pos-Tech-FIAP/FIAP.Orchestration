@@ -6,7 +6,7 @@ metadata:
   labels:
     app: user-api
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "usuarios-api-group"
   Keycloak__Authority: "http://keycloak:80/realms/TechChallengeFiap"
