@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'FIAP Dashboards'
+    orgId: 1
+    folder: 'FIAP Games'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

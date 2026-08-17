@@ -239,6 +239,32 @@ services:
       ASPNETCORE_URLS: http://+:8080
     restart: on-failure
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fiap-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: on-failure
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fiap-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    restart: on-failure
+
 volumes:
   sqlserver_data:
   mongo_data:
@@ -246,3 +272,5 @@ volumes:
   zookeeper_data:
   kafka_data:
   keycloak_postgres_data:
+  prometheus_data:
+  grafana_data:
