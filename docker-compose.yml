@@ -85,14 +85,26 @@ services:
         condition: service_healthy
     ports:
       - "9092:9092"
+      - "9094:9094"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # Listener TUNNEL (9094): exclusivo para o túnel ngrok que a Lambda usa via
+      # self-managed Kafka trigger. SASL_SSL porque a AWS Lambda exige TLS pra
+      # brokers acessíveis pela internet pública. Reaproveita o mesmo certificado
+      # e credenciais gerados em FIAP.NotificationsAPI/kafka-certs.
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092,TUNNEL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092,TUNNEL://${TUNNEL_ADVERTISED_ADDRESS:-localhost:9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,TUNNEL:SASL_SSL
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SASL_ENABLED_MECHANISMS: "PLAIN"
+      KAFKA_LISTENER_NAME_TUNNEL_PLAIN_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="lambda" password="${KAFKA_TUNNEL_SASL_PASSWORD:-kafka-tunnel-default-pass}" user_lambda="${KAFKA_TUNNEL_SASL_PASSWORD:-kafka-tunnel-default-pass}";'
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.keystore.p12
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:-kafka-tunnel-default-pass}"
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEY_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:-kafka-tunnel-default-pass}"
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_TYPE: PKCS12
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_CLIENT_AUTH: none
       # KAFKA_AUTO_CREATE_TOPICS_ENABLE já cria os tópicos (order-placed, payment-processed,
       # user-created, notification-requested) sob demanda, no primeiro publish de cada um.
       # KAFKA_CREATE_TOPICS não existe nesta imagem (confluentinc/cp-kafka) — é uma variável
@@ -100,6 +112,11 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
       - kafka_data:/var/lib/kafka/data
+      # Sem .env: usa o keystore "de mentira" versionado (Kafka sobe normal, listener
+      # TUNNEL fica inerte). Pra Lambda de verdade, gere certificados com
+      # FIAP.NotificationsAPI/generate-kafka-tunnel-certs.sh e defina KAFKA_CERTS_DIR
+      # no seu .env apontando pra ../FIAP.NotificationsAPI/kafka-certs
+      - ${KAFKA_CERTS_DIR:-../FIAP.NotificationsAPI/kafka-certs-default}:/etc/kafka/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
       interval: 10s
