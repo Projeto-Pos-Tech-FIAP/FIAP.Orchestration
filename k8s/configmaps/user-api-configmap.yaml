@@ -9,7 +9,13 @@ data:
   ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "usuarios-api-group"
-  Keycloak__Authority: "http://keycloak:80/realms/TechChallengeFiap"
+  # Sem porta explícita de propósito: o Keycloak emite o token com
+  # iss="http://keycloak/realms/..." (sem :80) mesmo quando requisitado com
+  # a porta explícita — a maioria dos clientes HTTP omite a porta padrão do
+  # header Host. Como o ValidIssuer aqui é comparado por igualdade exata
+  # (AuthConfig.cs), o valor precisa bater exatamente com o iss real.
+  # Mesmo valor usado no consumer do Kong (k8s/gateway/kong-configmap.yaml).
+  Keycloak__Authority: "http://keycloak/realms/TechChallengeFiap"
   Keycloak__Audience: "tech-challenge"
   Keycloak__BaseUrl: "http://keycloak:80/"
   Keycloak__Realm: "TechChallengeFiap"

@@ -15,7 +15,9 @@ Repositório central de infraestrutura da **FIAP Games Platform** — contém o 
 7. [Por que Deployment, Service e PVC?](#7-por-que-deployment-service-e-pvc)
 8. [Como Executar — Docker Compose](#8-como-executar--docker-compose)
 9. [Como Executar — Kubernetes](#9-como-executar--kubernetes)
-10. [Próximos Passos](#10-próximos-passos)
+10. [API Gateway (Kong)](#10-api-gateway-kong)
+11. [Observabilidade (Prometheus + Grafana)](#11-observabilidade-prometheus--grafana)
+12. [Próximos Passos](#12-próximos-passos)
 
 ---
 
@@ -77,13 +79,17 @@ source/repos/
 │
 └── FIAP.Orchestration/            ← Este repositório (infraestrutura)
     ├── docker-compose.yml         ← Stack completa local
+    ├── scripts/
+    │   └── configure-kong-jwt.sh  ← Injeta a chave pública do Keycloak no Kong
     └── k8s/
         ├── 00-namespace.yaml
         ├── kustomization.yaml     ← Aplica tudo com 1 comando
         ├── configmaps/            ← Dados não-sensíveis
         ├── secrets/               ← Dados sensíveis
-        ├── infrastructure/        ← SQL, Mongo, Redis, Kafka
-        └── services/              ← Todos os microserviços
+        ├── infrastructure/        ← SQL, Mongo, Redis, Kafka, Keycloak
+        ├── services/              ← Todos os microserviços
+        ├── monitoring/            ← Prometheus + Grafana
+        └── gateway/               ← Kong API Gateway (único ponto de entrada)
 ```
 
 > **Princípio:** cada repositório de serviço possui seu próprio `k8s/` com os manifestos específicos. O `FIAP.Orchestration` centraliza a infraestrutura compartilhada sem duplicar código de negócio.
@@ -415,7 +421,127 @@ kubectl delete -k k8s/
 
 ---
 
-## 10. Próximos Passos
+## 10. API Gateway (Kong)
+
+**Ferramenta escolhida: Kong API Gateway**, rodando em modo **DB-less** (sem banco de dados próprio — toda a configuração vive em um arquivo declarativo versionado neste repositório). É o único ponto de entrada externo do sistema FCG: `user-api` e `catalog-api` continuam com Service `ClusterIP`, inacessíveis diretamente de fora do cluster.
+
+```
+Cliente ──▶ Kong (NodePort :30080) ──┬──▶ user-api  (ClusterIP, sem acesso externo direto)
+                                     └──▶ catalog-api (ClusterIP, sem acesso externo direto)
+```
+
+### Onde está a configuração
+
+| Arquivo | Responsabilidade |
+|---|---|
+| [`k8s/gateway/kong-configmap.yaml`](k8s/gateway/kong-configmap.yaml) | `kong.yml` — declaração DB-less: services, routes, plugins e a credencial JWT do consumer (versionado) |
+| [`k8s/gateway/kong-deployment.yaml`](k8s/gateway/kong-deployment.yaml) | Deployment do Kong (`KONG_DATABASE=off`, monta o `kong.yml`, `KONG_NGINX_WORKER_PROCESSES=1`) |
+| [`k8s/gateway/kong-service.yaml`](k8s/gateway/kong-service.yaml) | `kong-proxy` (NodePort 30080 — entrada externa) e `kong-admin` (ClusterIP — Admin/Status API, só interno) |
+| [`scripts/configure-kong-jwt.sh`](scripts/configure-kong-jwt.sh) | Busca a chave pública real do Keycloak (JWKS) e substitui o placeholder no `kong-configmap.yaml` |
+
+### Rotas expostas pelo Gateway
+
+| Método | Path | Backend | JWT exigido? |
+|---|---|---|---|
+| POST | `/api/auth/login` | user-api | **Não** — é como o cliente obtém o token |
+| POST | `/api/auth/refresh` | user-api | **Não** |
+| GET | `/api/users` | user-api | Sim (+ role `Admin` no token) |
+| POST | `/api/users` | user-api | Sim (+ role `Admin`) |
+| PUT | `/api/users/{userEmail}` | user-api | Sim (+ role `Admin`) |
+| PUT | `/api/users/enable?userEmail=...&enable=...` | user-api | Sim (+ role `Admin`) |
+| GET | `/api/users/search?username=...&email=...` | user-api | Sim (+ role `Admin`) |
+| GET | `/api/game` | catalog-api | Sim |
+| GET | `/api/game/{id}` | catalog-api | Sim |
+| POST | `/api/game` | catalog-api | Sim |
+| PUT | `/api/game/{id}` | catalog-api | Sim |
+| DELETE | `/api/game/{id}` | catalog-api | Sim |
+| POST | `/api/purchase` | catalog-api | Sim |
+
+`PaymentAPI` e `NotificationsAPI` não têm rota no Gateway — o desafio só pede roteamento explícito para `UsersAPI`/`CatalogAPI` (PaymentAPI reage via Kafka; NotificationsAPI virou Function serverless).
+
+### Como o Gateway funciona
+
+- **Recebe todas as requisições externas** — `kong-proxy` é o único Service do namespace exposto fora do cluster (NodePort).
+- **Roteia** por prefixo de path: `/api/auth/*` e `/api/users/*` → `user-api`; `/api/game/*` e `/api/purchase` → `catalog-api` (tabela completa acima).
+- **Valida o token JWT** via plugin nativo `jwt` do Kong, aplicado só nas rotas protegidas:
+  - Algoritmo RS256, claim `iss` precisa casar com o emissor do Keycloak (`http://keycloak/realms/TechChallengeFiap`, **sem** porta — ver aviso abaixo).
+  - Assinatura validada contra a chave pública real do realm, nunca contra segredo compartilhado.
+  - Sem token, token expirado (`exp`) ou assinatura inválida → `401` **direto do Kong**, nunca chega em `UsersAPI`/`CatalogAPI`.
+
+  > **`iss` sem porta:** mesmo requisitando `http://keycloak:80/...` com a porta explícita, o Keycloak emite o token com `iss: http://keycloak/realms/TechChallengeFiap` — a maioria dos clientes HTTP omite a porta padrão do header `Host`. Testado e confirmado direto no cluster. Por isso `k8s/configmaps/user-api-configmap.yaml` e `catalog-api-configmap.yaml` também usam `Keycloak__Authority` sem porta — precisa bater exatamente com o `iss` real, já que a validação é por igualdade de string.
+
+### Por que a chave pública JWT não vem pronta no `kong-configmap.yaml`?
+
+O Keycloak gera um par de chaves RSA novo a cada vez que o realm é importado do zero — a chave pública real não existe no momento do commit. O arquivo sobe com uma chave RSA placeholder (sintaticamente válida, mas descartável, só para o Kong conseguir inicializar) entre os marcadores `# BEGIN/END-KEYCLOAK-PUBLIC-KEY`; nenhum JWT genuíno do Keycloak valida contra ela até o script rodar. Essa chave **não é secreta** — é a mesma que qualquer cliente já lê sem autenticação em `/realms/TechChallengeFiap/protocol/openid-connect/certs` — por isso vive num ConfigMap normal, sem Secret nem indireção de vault.
+
+### Passo a passo — subir e testar
+
+```bash
+# 1. Build das imagens do UsersAPI e CatalogAPI e carga no cluster local
+cd FIAP.UsersAPI    && docker build -t fiap/usuarios-api:latest . && cd ..
+cd FIAP.CatalogAPI  && docker build -t fiap/catalog-api:latest .  && cd ..
+minikube image load fiap/usuarios-api:latest
+minikube image load fiap/catalog-api:latest
+
+# 2. Aplica todos os manifestos (Kong sobe com a chave placeholder)
+cd FIAP.Orchestration
+kubectl apply -k k8s/
+
+# 3. Busca a chave pública real do Keycloak e reconfigura o Kong
+./scripts/configure-kong-jwt.sh
+
+# 4. Abre o túnel para o Gateway (única porta externa)
+kubectl port-forward -n fiap-games svc/kong-proxy 8000:8000
+```
+
+Com o túnel aberto, em outro terminal:
+
+```bash
+# Sem token -> 401 direto do Kong, nunca chega no UsersAPI
+curl -i http://localhost:8000/api/users
+
+# Login (rota pública, form-data — não JSON)
+curl -s -X POST http://localhost:8000/api/auth/login \
+  -F "Username=demo.gateway" -F "Password=Demo@12345"
+# -> {"access_token": "eyJ...", ...}
+
+# Rota protegida com o token obtido acima
+curl -s http://localhost:8000/api/users \
+  -H "Authorization: Bearer <access_token>"
+
+# CatalogAPI, mesmo token
+curl -s http://localhost:8000/api/game \
+  -H "Authorization: Bearer <access_token>"
+```
+
+> Se o cluster expõe NodePort diretamente na sua máquina (ex.: Docker Desktop/kind com port mapping — não é o caso do minikube com driver Docker), dá pra usar `http://localhost:30080` direto, sem o port-forward do passo 4.
+
+Pra inspecionar o estado do Kong sem interface visual, a Admin API (só interna, porta 8001) devolve tudo em JSON:
+
+```bash
+kubectl port-forward -n fiap-games svc/kong-admin 8001:8001
+
+curl -s localhost:8001/status | jq                                          # saúde, conexões, memória
+curl -s localhost:8001/services | jq '.data[] | {name, host}'               # services registrados
+curl -s localhost:8001/routes | jq '.data[] | {name, paths}'                # routes e paths
+curl -s localhost:8001/consumers/keycloak/jwt | jq '.data[] | {key, algorithm}'  # credencial JWT
+```
+
+---
+
+## 11. Observabilidade (Prometheus + Grafana)
+
+**Opção escolhida: Opção A — Stack de código aberto (Prometheus + Grafana).**
+
+- `CatalogAPI`, `UsersAPI`, `PaymentAPI` e `NotificationsAPI` expõem métricas Prometheus em `GET /metrics` (via `prometheus-net.AspNetCore`).
+- O Prometheus faz scrape das 4 APIs a cada 15s (`k8s/monitoring/prometheus-configmap.yaml`); o Grafana já sobe com datasource e dashboard **FIAP APIs Overview** provisionados automaticamente (`k8s/monitoring/grafana-*`), mostrando latência (p50/p95/p99), contagem de requisições (total e por status HTTP) e taxa de erros em tempo real.
+- Implantação 100% via manifestos Kubernetes, sem uso de agentes/APM comerciais (Opção B não foi utilizada).
+
+Guia completo (queries PromQL painel a painel, como acessar local/Kubernetes, como recriar o dashboard do zero): [`monitoring/README.md`](monitoring/README.md).
+
+---
+
+## 12. Próximos Passos
 
 ### Como adicionar UserAPI / PaymentAPI / NotificationAPI
 
@@ -442,7 +568,8 @@ Os manifestos em `k8s/services/user-api-*.yaml` já estão prontos — basta ter
 
 ### Melhorias Sugeridas para Produção
 
-- Adicionar **Ingress** (Nginx/Traefik) para expor APIs externamente com TLS
+- Habilitar **TLS** no `kong-proxy` (hoje HTTP puro) e trocar `NodePort` por `LoadBalancer`/Ingress na frente do Kong
+- Rodar o Kong com banco (Postgres) + réplicas se a config declarativa DB-less deixar de ser suficiente para o time
 - Substituir Deployments de banco por **StatefulSets** para melhor gerenciamento de estado
 - Usar **Sealed Secrets** ou **External Secrets Operator** para secrets seguros em Git
 - Adicionar **HorizontalPodAutoscaler** para escala automática baseada em CPU/memória

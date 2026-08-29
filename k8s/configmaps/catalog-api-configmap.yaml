@@ -10,3 +10,8 @@ data:
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "catalog-api-group"
   MongoDb__DatabaseName: "CatalogAudit"
+  # Faltava — sem isso options.Authority ficava null e o JwtBearer nunca
+  # validava nenhum token. Sem porta de propósito, ver comentário em
+  # user-api-configmap.yaml (o iss real do Keycloak não inclui ":80").
+  Keycloak__Authority: "http://keycloak/realms/TechChallengeFiap"
+  Keycloak__Audience: "tech-challenge"

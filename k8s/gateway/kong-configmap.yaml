@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-declarative-config
+  namespace: fiap-games
+  labels:
+    app: kong-gateway
+    tier: gateway
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    _transform: true
+
+    # Kong roda em modo DB-less: toda a configuração (services, routes,
+    # plugins, consumers) vive neste arquivo, versionado no repositório de
+    # orquestração. Não há Admin API de escrita nem banco de dados do Kong.
+
+    services:
+      # UsersAPI — login/refresh ficam públicos (é como o cliente OBTÉM o
+      # token). As rotas de gerenciamento de usuário exigem JWT válido.
+      - name: user-api
+        url: http://user-api.fiap-games.svc.cluster.local:80
+        routes:
+          - name: user-api-auth
+            paths:
+              - /api/auth
+            strip_path: false
+
+          - name: user-api-protected
+            paths:
+              - /api/users
+            strip_path: false
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: iss
+
+      # CatalogAPI — catálogo de jogos e compras, sempre atrás de JWT.
+      - name: catalog-api
+        url: http://catalog-api.fiap-games.svc.cluster.local:80
+        routes:
+          - name: catalog-api-protected
+            paths:
+              - /api/game
+              - /api/purchase
+            strip_path: false
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: iss
+
+    # Consumer que representa o Keycloak como emissor confiável de tokens.
+    # O plugin jwt casa o claim "iss" do token com a "key" abaixo e valida a
+    # assinatura RS256 usando a chave pública abaixo.
+    #
+    # IMPORTANTE: essa NÃO é uma credencial secreta — é a metade pública do
+    # par de chaves RS256 do realm, o mesmo valor que qualquer cliente já
+    # consegue ler sem autenticação em
+    # /realms/TechChallengeFiap/protocol/openid-connect/certs. Não há
+    # problema em versioná-la; o motivo de precisar de um script
+    # (scripts/configure-kong-jwt.sh) é só operacional: o Keycloak gera um
+    # par de chaves novo a cada realm importado do zero, então o valor real
+    # só existe depois que o pod do Keycloak sobe pela primeira vez — não dá
+    # pra saber o valor no momento do commit. A chave abaixo é um
+    # placeholder RSA sintaticamente válido (mas descartável) só para o
+    # Kong conseguir subir antes do script rodar; nenhum JWT genuíno do
+    # Keycloak valida contra ela.
+    consumers:
+      - username: keycloak
+        jwt_secrets:
+          - key: http://keycloak/realms/TechChallengeFiap
+            algorithm: RS256
+            # BEGIN-KEYCLOAK-PUBLIC-KEY (scripts/configure-kong-jwt.sh substitui este bloco)
+            rsa_public_key: |
+              -----BEGIN PUBLIC KEY-----
+              MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs96s0nxYjzoyuY7Rvlae
+              JZNya8j6Eg9wT3X/bqB6BAx68dCN9fqL02VrWtiC8VfetIFMsEYYZAKGIGLxfBW5
+              kADvJmL/UXm5RT8ZEwakyZJ8ePbFdu9GrvinK/CCfROcJKZmXqdUMyWA9DGrp1rY
+              cX18YHSc/UErjV+rUgvkuYNKWG5ZiCdxb6QilButvfLIZyz9pw7fD9dpROQBW/mi
+              Ll7CJSPXKdcJbIGDFNBG18D32Cet9ihyzbbp+tFkPECjf2MofeAbOLsXyGM+7uF9
+              WcaZwssxafI2dMg6+6DzC6rwPUmpQyK0NGMYx40pjWjw4JM62sIv5tltzxcxdwYQ
+              0wIDAQAB
+              -----END PUBLIC KEY-----
+            # END-KEYCLOAK-PUBLIC-KEY

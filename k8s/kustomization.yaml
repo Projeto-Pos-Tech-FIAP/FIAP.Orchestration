@@ -62,6 +62,11 @@ resources:
   - monitoring/grafana-deployment.yaml
   - monitoring/grafana-service.yaml
 
+  # 8. API Gateway (Kong) — único ponto de entrada externo do sistema
+  - gateway/kong-configmap.yaml
+  - gateway/kong-deployment.yaml
+  - gateway/kong-service.yaml
+
 configMapGenerator:
   - name: keycloak-realm
     files:
