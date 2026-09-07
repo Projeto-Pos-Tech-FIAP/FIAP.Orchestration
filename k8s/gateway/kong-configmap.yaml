@@ -45,6 +45,7 @@ data:
             paths:
               - /api/game
               - /api/purchase
+              - /api/eventlog
             strip_path: false
             plugins:
               - name: jwt

@@ -17,7 +17,8 @@ Repositório central de infraestrutura da **FIAP Games Platform** — contém o 
 9. [Como Executar — Kubernetes](#9-como-executar--kubernetes)
 10. [API Gateway (Kong)](#10-api-gateway-kong)
 11. [Observabilidade (Prometheus + Grafana)](#11-observabilidade-prometheus--grafana)
-12. [Próximos Passos](#12-próximos-passos)
+12. [Persistência Poliglota — MongoDB e Redis](#12-persistência-poliglota--mongodb-e-redis)
+13. [Próximos Passos](#13-próximos-passos)
 
 ---
 
@@ -50,7 +51,8 @@ A plataforma FIAP Games é composta por quatro microserviços que se comunicam v
 | Entity Framework Core | 10.0 | ORM — SQL Server |
 | AutoMapper | 12.0.1 | Mapeamento Entity ↔ DTO |
 | Confluent.Kafka | 2.x | Producer/Consumer Kafka |
-| MongoDB.Driver | 3.x | Audit logs em MongoDB |
+| MongoDB.Driver | 3.x | NoSQL — logs de eventos de integração e audit logs |
+| StackExchange.Redis / IDistributedCache | 2.x | Cache distribuído — sessões e consultas onerosas |
 | Docker | — | Containerização |
 | Kubernetes | 1.28+ | Orquestração de containers |
 | Kustomize | — | Composição de manifestos K8s |
@@ -456,13 +458,15 @@ Cliente ──▶ Kong (NodePort :30080) ──┬──▶ user-api  (ClusterIP
 | PUT | `/api/game/{id}` | catalog-api | Sim |
 | DELETE | `/api/game/{id}` | catalog-api | Sim |
 | POST | `/api/purchase` | catalog-api | Sim |
+| GET | `/api/eventlog` | catalog-api | Sim |
+| GET | `/api/eventlog/{correlationId}` | catalog-api | Sim |
 
 `PaymentAPI` e `NotificationsAPI` não têm rota no Gateway — o desafio só pede roteamento explícito para `UsersAPI`/`CatalogAPI` (PaymentAPI reage via Kafka; NotificationsAPI virou Function serverless).
 
 ### Como o Gateway funciona
 
 - **Recebe todas as requisições externas** — `kong-proxy` é o único Service do namespace exposto fora do cluster (NodePort).
-- **Roteia** por prefixo de path: `/api/auth/*` e `/api/users/*` → `user-api`; `/api/game/*` e `/api/purchase` → `catalog-api` (tabela completa acima).
+- **Roteia** por prefixo de path: `/api/auth/*` e `/api/users/*` → `user-api`; `/api/game/*`, `/api/purchase` e `/api/eventlog/*` → `catalog-api` (tabela completa acima).
 - **Valida o token JWT** via plugin nativo `jwt` do Kong, aplicado só nas rotas protegidas:
   - Algoritmo RS256, claim `iss` precisa casar com o emissor do Keycloak (`http://keycloak/realms/TechChallengeFiap`, **sem** porta — ver aviso abaixo).
   - Assinatura validada contra a chave pública real do realm, nunca contra segredo compartilhado.
@@ -541,7 +545,118 @@ Guia completo (queries PromQL painel a painel, como acessar local/Kubernetes, co
 
 ---
 
-## 12. Próximos Passos
+## 12. Persistência Poliglota — MongoDB e Redis
+
+A Fase 3 exige que a arquitetura deixe de depender exclusivamente de banco relacional. Aqui isso se traduz em duas escolhas com papéis bem distintos: **MongoDB** guarda dados que crescem sem limite e não têm formato fixo; **Redis** guarda dados quentes e descartáveis, para tirar carga do banco principal.
+
+```
+                       ┌──────────────────────────────┐
+   escrita de negócio  │        SQL Server            │   verdade transacional
+   ───────────────────▶│  jogos, biblioteca, usuários │
+                       └──────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        ▼                                                       ▼
+┌──────────────────────┐                          ┌──────────────────────────┐
+│      MongoDB         │                          │          Redis           │
+│  FcgEvents.EventLogs │                          │  catalog:*  /  users:*   │
+│                      │                          │                          │
+│ todo evento Kafka    │                          │ consultas onerosas e     │
+│ publicado/consumido  │                          │ token de sessão do       │
+│ por Catalog/Payment/ │                          │ Keycloak, com TTL curto  │
+│ Users                │                          │                          │
+└──────────────────────┘                          └──────────────────────────┘
+```
+
+### 12.1 MongoDB — logs de eventos
+
+**Cenário de uso:** dado de alta volumetria e formato variável. Cada tipo de evento tem um payload diferente, o volume cresce a cada compra e ninguém precisa dele numa transação — exatamente o caso em que uma tabela relacional atrapalha mais do que ajuda.
+
+**Implementação:** driver oficial `MongoDB.Driver`. Os três serviços escrevem na **mesma base e coleção** (`FcgEvents.EventLogs`), cada um se identificando no campo `service`. É isso que permite reconstruir o fluxo inteiro de uma compra em uma consulta só, por `correlationId`.
+
+| Serviço | O que registra |
+|---|---|
+| CatalogAPI | `OrderPlacedEvent` publicado, `PaymentProcessedEvent` consumido |
+| PaymentAPI | `OrderPlacedEvent` consumido, `PaymentProcessedEvent` publicado |
+| UsersAPI | `UserCreatedEvent` publicado |
+
+Documento gravado (o `payload` é subdocumento real, não string — dá para filtrar por campo interno):
+
+```json
+{
+  "_id": ObjectId("6a93376c823a5f7464554826"),
+  "service": "CatalogAPI",
+  "eventType": "OrderPlacedEvent",
+  "direction": "Published",
+  "topic": "order-placed",
+  "correlationId": "e9d8f396-4455-4b03-a1f8-76b95a31d2c9",
+  "status": "Success",
+  "payload": { "UserId": "500f5643-...", "GameId": 42, "Price": 59.9 },
+  "occurredAt": ISODate("2026-08-29T19:47:54.592Z")
+}
+```
+
+Índices criados automaticamente na subida da CatalogAPI: `{correlationId: 1, occurredAt: -1}` e `{occurredAt: -1}`.
+
+**Como consultar** — pelo Gateway, com o mesmo token JWT das demais rotas:
+
+```bash
+# Rastro completo de uma compra, do mais antigo ao mais recente
+curl -s http://localhost:30080/api/eventlog/{correlationId} -H "Authorization: Bearer $TOKEN"
+
+# Últimos eventos, com filtros opcionais
+curl -s "http://localhost:30080/api/eventlog?service=PaymentAPI&eventType=PaymentProcessedEvent&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Ou direto no banco:
+
+```bash
+kubectl exec -n fiap-games deploy/mongodb -- mongosh -u admin -p 'PosTech@123' \
+  --authenticationDatabase admin --quiet --eval \
+  'db.getSiblingDB("FcgEvents").EventLogs.find().sort({occurredAt:-1}).limit(10)'
+```
+
+> **Falha ao gravar o log nunca derruba o fluxo de negócio.** O `MongoEventLogService` captura exceções e registra um erro no log da aplicação: o evento já foi publicado no Kafka e a compra segue — o log é observabilidade, não parte da transação.
+
+**Além dos eventos**, a CatalogAPI também usa o MongoDB para *audit logs* das entidades relacionais (base `CatalogAudit`, coleção `AuditLogs`), gravados pelo interceptor de `SaveChanges` do EF Core.
+
+### 12.2 Redis — cache distribuído
+
+**Cenário de uso:** os dois casos citados no desafio que fazem sentido nesta arquitetura — **resultados de consultas onerosas** e **dados de sessão**.
+
+**Implementação:** as leituras e escritas passam pela abstração `IDistributedCache` do ASP.NET Core (`AddStackExchangeRedisCache`); a invalidação por prefixo usa o `IConnectionMultiplexer` do `StackExchange.Redis` diretamente, porque varrer chaves (`SCAN`) não existe na abstração.
+
+| Serviço | O que é cacheado | Chave | Invalidação |
+|---|---|---|---|
+| CatalogAPI | `GET /api/game` — listagem completa do catálogo | `catalog:games:all` | TTL 120s + toda escrita em jogo |
+| CatalogAPI | `GET /api/game/{id}` — detalhe com join de gêneros | `catalog:games:{id}` | TTL 120s + toda escrita em jogo |
+| UsersAPI | listagem de usuários (chamada HTTP à Admin API do Keycloak) | `usersapi:users:all` | TTL 60s + toda escrita em usuário |
+| UsersAPI | busca por username/email | `usersapi:users:lookup:{u}:{e}` | TTL 60s + toda escrita em usuário |
+| UsersAPI | **token de serviço do Keycloak** (dado de sessão) | `usersapi:session:keycloak-admin-token` | TTL = expiração do token − 30s |
+
+O token do Keycloak é o caso mais claro de "dado de sessão": sem Redis, cada réplica da `UsersAPI` abriria seu próprio token no Keycloak a cada expiração. Com Redis, todas compartilham o mesmo, e o provider ainda mantém uma cópia local de curta duração (L1) para não ir ao Redis a cada chamada.
+
+Escritas invalidam por prefixo (`catalog:games:` / `usersapi:users:`) — derrubar lista e detalhes de uma vez custa menos do que manter granularidade fina para um TTL desta ordem.
+
+> **Redis fora do ar não derruba a aplicação.** Todas as operações do `RedisCacheService` capturam exceção, logam um *warning* e seguem para a origem dos dados; o multiplexer sobe com `AbortOnConnectFail = false` e reconecta em background.
+
+### 12.3 Onde está a configuração
+
+| Chave | Onde | Valor no cluster |
+|---|---|---|
+| `MongoDb__Host` / `__Port` | [`k8s/configmaps/shared-configmap.yaml`](k8s/configmaps/shared-configmap.yaml) | `mongodb` / `27017` |
+| `MongoDb__EventsDatabaseName` / `__EventsCollectionName` | `shared-configmap.yaml` | `FcgEvents` / `EventLogs` |
+| `MongoDb__Username` / `__Password` | `k8s/secrets/{catalog,user,payment}-api-secret.yaml` | Secret |
+| `MongoDb__DatabaseName` / `__CollectionName` (audit) | [`k8s/configmaps/catalog-api-configmap.yaml`](k8s/configmaps/catalog-api-configmap.yaml) | `CatalogAudit` / `AuditLogs` |
+| `ConnectionStrings__Redis` | `shared-configmap.yaml` | `redis:6379` |
+| `Cache__InstanceName` / `Cache__DefaultTtlSeconds` | configmap de cada serviço | `catalog:`/120s, `usersapi:`/60s |
+
+Em Docker Compose, os mesmos valores vêm do bloco `x-datastore-env` no [`docker-compose.yml`](docker-compose.yml).
+
+---
+
+## 13. Próximos Passos
 
 ### Como adicionar UserAPI / PaymentAPI / NotificationAPI
 

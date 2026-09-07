@@ -8,6 +8,10 @@ docker compose up -d --build
 docker compose ps          # confirma tudo Up/healthy
 ```
 
+> **Se o Kafka sair com `Exited (1)` e o log disser `keystore password was incorrect`:** seu `.env` define `KAFKA_TUNNEL_KEYSTORE_PASSWORD` (a senha dos certificados reais) mas não define `KAFKA_CERTS_DIR` — aí o compose monta o keystore *placeholder* de `kafka-certs-default/` com a senha real. Ou acrescente `KAFKA_CERTS_DIR=../FIAP.NotificationsAPI/kafka-certs` ao `.env`, ou remova a linha da senha para voltar ao par placeholder/senha padrão.
+>
+> A porta **1433** também precisa estar livre — um SQL Server de outro projeto rodando nela impede o `fiap-sqlserver` de subir.
+
 Acessos:
 | Serviço | URL |
 |---|---|
@@ -71,3 +75,12 @@ O banco começa vazio. Antes de testar o fluxo de compra:
 4. **Comprar**: `POST /api/Purchase` no CatalogAPI com `Authorization: Bearer <token>` e `{"gameId": <id do passo 2>}`
 
 Isso dispara o fluxo completo: CatalogAPI publica `order-placed` → PaymentAPI processa e publica `payment-processed` → CatalogAPI credita a biblioteca e NotificationsAPI "envia" o e-mail de confirmação.
+
+5. **Ver o rastro no MongoDB**: a resposta do passo 4 traz um `correlationId`. Com ele:
+   `GET /api/EventLog/{correlationId}` no CatalogAPI (com o mesmo `Bearer <token>`) devolve os 4 eventos do fluxo — publicado e consumido de cada lado — lidos da coleção `FcgEvents.EventLogs`.
+
+6. **Ver o cache Redis funcionando**: chamar `GET /api/Game` duas vezes seguidas e olhar o log da CatalogAPI (`Cache MISS` na primeira, `Cache HIT` na segunda). Um `PUT`/`POST` em `/api/Game` invalida o prefixo e a próxima leitura volta a ser MISS.
+   ```bash
+   docker exec fiap-redis redis-cli KEYS 'catalog:*'    # Docker Compose
+   kubectl exec -n fiap-games deploy/redis -- redis-cli KEYS 'catalog:*'
+   ```

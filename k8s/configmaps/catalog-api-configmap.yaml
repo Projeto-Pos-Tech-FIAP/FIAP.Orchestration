@@ -10,6 +10,10 @@ data:
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "catalog-api-group"
   MongoDb__DatabaseName: "CatalogAudit"
+  # Cache distribuído (Redis). O endereço vem de ConnectionStrings__Redis, em
+  # shared-infra-config.
+  Cache__InstanceName: "catalog:"
+  Cache__DefaultTtlSeconds: "120"
   # Faltava — sem isso options.Authority ficava null e o JwtBearer nunca
   # validava nenhum token. Sem porta de propósito, ver comentário em
   # user-api-configmap.yaml (o iss real do Keycloak não inclui ":80").
