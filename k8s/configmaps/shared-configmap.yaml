@@ -19,6 +19,10 @@ data:
   MongoDb__Host: "mongodb"
   MongoDb__Port: "27017"
   MongoDb__CollectionName: "AuditLogs"
+  # Logs de eventos de integração — base e coleção compartilhadas por Catalog, Payment
+  # e Users, para que o fluxo de uma compra possa ser lido por CorrelationId de uma vez.
+  MongoDb__EventsDatabaseName: "FcgEvents"
+  MongoDb__EventsCollectionName: "EventLogs"
 
   # Redis
   ConnectionStrings__Redis: "redis:6379"

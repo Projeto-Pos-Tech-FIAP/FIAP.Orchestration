@@ -9,6 +9,10 @@ data:
   ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   Kafka__GroupId: "usuarios-api-group"
+  # Cache distribuído (Redis). O endereço vem de ConnectionStrings__Redis, em
+  # shared-infra-config.
+  Cache__InstanceName: "usersapi:"
+  Cache__DefaultTtlSeconds: "60"
   # Sem porta explícita de propósito: o Keycloak emite o token com
   # iss="http://keycloak/realms/..." (sem :80) mesmo quando requisitado com
   # a porta explícita — a maioria dos clientes HTTP omite a porta padrão do

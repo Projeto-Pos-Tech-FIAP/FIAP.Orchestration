@@ -15,6 +15,17 @@ x-keycloak-env: &keycloak-client-env
   Keycloak__ClientId: tech-challenge
   Keycloak__ClientSecret: TDB539JXqWeqNmrzFwtT7UNMQXtIwj1Y
 
+x-datastore-env: &datastore-env
+  # MongoDB — logs de eventos de integração (coleção compartilhada entre os serviços)
+  MongoDb__Host: mongodb
+  MongoDb__Port: "27017"
+  MongoDb__Username: admin
+  MongoDb__Password: "PosTech@123"
+  MongoDb__EventsDatabaseName: FcgEvents
+  MongoDb__EventsCollectionName: EventLogs
+  # Redis — cache distribuído
+  ConnectionStrings__Redis: redis:6379
+
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -71,6 +82,12 @@ services:
       - "2181:2181"
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
+      # O ZooKeeper reconstrói o estado com snapshot + transaction log. Sem persistir
+      # /var/lib/zookeeper/log ele volta vazio a cada recriação do container, perde o
+      # znode /cluster/id e gera um cluster novo — enquanto o Kafka, que TEM volume,
+      # guarda o id antigo em meta.properties. Resultado: InconsistentClusterIdException
+      # e o broker se recusando a subir depois de todo `docker compose down`.
+      - zookeeper_log:/var/lib/zookeeper/log
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
@@ -184,6 +201,8 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       keycloak:
@@ -191,16 +210,16 @@ services:
     ports:
       - "5001:8080"
     environment:
-      <<: [*kafka-env, *keycloak-client-env]
+      <<: [*kafka-env, *keycloak-client-env, *datastore-env]
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=CatalogAPI;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
-      MongoDb__Host: mongodb
-      MongoDb__Port: "27017"
-      MongoDb__Username: admin
-      MongoDb__Password: "PosTech@123"
+      # Base/coleção de auditoria (só a CatalogAPI tem); os logs de eventos usam a base
+      # compartilhada definida em x-datastore-env.
       MongoDb__DatabaseName: CatalogAudit
       MongoDb__CollectionName: AuditLogs
+      Cache__InstanceName: "catalog:"
+      Cache__DefaultTtlSeconds: "120"
     restart: on-failure
 
   usuarios-api:
@@ -211,6 +230,10 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       keycloak:
@@ -218,10 +241,12 @@ services:
     ports:
       - "5002:8080"
     environment:
-      <<: [*kafka-env, *keycloak-client-env]
+      <<: [*kafka-env, *keycloak-client-env, *datastore-env]
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=UsuariosDb;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
+      Cache__InstanceName: "usersapi:"
+      Cache__DefaultTtlSeconds: "60"
     restart: on-failure
 
   payment-api:
@@ -230,12 +255,14 @@ services:
       dockerfile: Dockerfile
     container_name: fiap-payment-api
     depends_on:
+      mongodb:
+        condition: service_healthy
       kafka:
         condition: service_healthy
     ports:
       - "5003:8080"
     environment:
-      <<: *kafka-env
+      <<: [*kafka-env, *datastore-env]
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
     restart: on-failure
@@ -287,6 +314,7 @@ volumes:
   mongo_data:
   redis_data:
   zookeeper_data:
+  zookeeper_log:
   kafka_data:
   keycloak_postgres_data:
   prometheus_data:
