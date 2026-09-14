@@ -438,8 +438,21 @@ Cliente ──▶ Kong (NodePort :30080) ──┬──▶ user-api  (ClusterIP
 |---|---|
 | [`k8s/gateway/kong-configmap.yaml`](k8s/gateway/kong-configmap.yaml) | `kong.yml` — declaração DB-less: services, routes, plugins e a credencial JWT do consumer (versionado) |
 | [`k8s/gateway/kong-deployment.yaml`](k8s/gateway/kong-deployment.yaml) | Deployment do Kong (`KONG_DATABASE=off`, monta o `kong.yml`, `KONG_NGINX_WORKER_PROCESSES=1`) |
-| [`k8s/gateway/kong-service.yaml`](k8s/gateway/kong-service.yaml) | `kong-proxy` (NodePort 30080 — entrada externa) e `kong-admin` (ClusterIP — Admin/Status API, só interno) |
+| [`k8s/gateway/kong-service.yaml`](k8s/gateway/kong-service.yaml) | `kong-proxy` (NodePort 30080 — entrada externa) e `kong-admin` (ClusterIP — Admin/Status API e Kong Manager, só internos) |
 | [`scripts/configure-kong-jwt.sh`](scripts/configure-kong-jwt.sh) | Busca a chave pública real do Keycloak (JWKS) e substitui o placeholder no `kong-configmap.yaml` |
+
+### Kong Manager — interface web
+
+A imagem `kong:3.7` já traz o **Kong Manager OSS**, habilitado no Deployment por `KONG_ADMIN_GUI_LISTEN` (porta 8002) e `KONG_ADMIN_GUI_API_URL`. Em modo DB-less ele é **somente leitura**: lê a mesma configuração declarativa do `kong.yml` e serve para inspecionar services, routes, plugins e consumers sem depender de `curl` na Admin API.
+
+Como o Manager roda no navegador e é ele quem chama a Admin API, os **dois** port-forwards são necessários:
+
+```bash
+kubectl port-forward -n fiap-games svc/kong-admin 8001:8001 8002:8002
+# interface: http://localhost:8002
+```
+
+A porta 8002 fica no Service `kong-admin`, que é `ClusterIP` — o Manager e a Admin API nunca são expostos fora do cluster, só o `kong-proxy`.
 
 ### Rotas expostas pelo Gateway
 
