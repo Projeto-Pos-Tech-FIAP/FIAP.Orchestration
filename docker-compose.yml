@@ -219,7 +219,7 @@ services:
       MongoDb__DatabaseName: CatalogAudit
       MongoDb__CollectionName: AuditLogs
       Cache__InstanceName: "catalog:"
-      Cache__DefaultTtlSeconds: "120"
+      Cache__DefaultTtlSeconds: "600"
     restart: on-failure
 
   usuarios-api:

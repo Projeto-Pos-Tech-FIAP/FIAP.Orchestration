@@ -31,6 +31,14 @@ spec:
               value: "0.0.0.0:8001"
             - name: KONG_STATUS_LISTEN
               value: "0.0.0.0:8100"
+            # Kong Manager (OSS) — interface web somente-leitura. Em modo DB-less
+            # ela le a mesma config declarativa do kong.yml, servindo para inspecionar
+            # services, routes, plugins e consumers sem depender da Admin API no curl.
+            - name: KONG_ADMIN_GUI_LISTEN
+              value: "0.0.0.0:8002"
+            # URL que o NAVEGADOR usa para falar com a Admin API (nao a do cluster).
+            - name: KONG_ADMIN_GUI_API_URL
+              value: "http://localhost:8001"
             - name: KONG_PROXY_ACCESS_LOG
               value: /dev/stdout
             - name: KONG_ADMIN_ACCESS_LOG
@@ -52,6 +60,8 @@ spec:
               containerPort: 8001
             - name: status
               containerPort: 8100
+            - name: manager
+              containerPort: 8002
           volumeMounts:
             - name: declarative-config
               mountPath: /kong/declarative

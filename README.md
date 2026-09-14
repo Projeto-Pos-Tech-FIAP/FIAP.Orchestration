@@ -629,8 +629,8 @@ kubectl exec -n fiap-games deploy/mongodb -- mongosh -u admin -p 'PosTech@123' \
 
 | Serviço | O que é cacheado | Chave | Invalidação |
 |---|---|---|---|
-| CatalogAPI | `GET /api/game` — listagem completa do catálogo | `catalog:games:all` | TTL 120s + toda escrita em jogo |
-| CatalogAPI | `GET /api/game/{id}` — detalhe com join de gêneros | `catalog:games:{id}` | TTL 120s + toda escrita em jogo |
+| CatalogAPI | `GET /api/game` — listagem completa do catálogo | `catalog:games:all` | TTL 10 min + toda escrita em jogo |
+| CatalogAPI | `GET /api/game/{id}` — detalhe com join de gêneros | `catalog:games:{id}` | TTL 10 min + toda escrita em jogo |
 | UsersAPI | listagem de usuários (chamada HTTP à Admin API do Keycloak) | `usersapi:users:all` | TTL 60s + toda escrita em usuário |
 | UsersAPI | busca por username/email | `usersapi:users:lookup:{u}:{e}` | TTL 60s + toda escrita em usuário |
 | UsersAPI | **token de serviço do Keycloak** (dado de sessão) | `usersapi:session:keycloak-admin-token` | TTL = expiração do token − 30s |
@@ -650,7 +650,7 @@ Escritas invalidam por prefixo (`catalog:games:` / `usersapi:users:`) — derrub
 | `MongoDb__Username` / `__Password` | `k8s/secrets/{catalog,user,payment}-api-secret.yaml` | Secret |
 | `MongoDb__DatabaseName` / `__CollectionName` (audit) | [`k8s/configmaps/catalog-api-configmap.yaml`](k8s/configmaps/catalog-api-configmap.yaml) | `CatalogAudit` / `AuditLogs` |
 | `ConnectionStrings__Redis` | `shared-configmap.yaml` | `redis:6379` |
-| `Cache__InstanceName` / `Cache__DefaultTtlSeconds` | configmap de cada serviço | `catalog:`/120s, `usersapi:`/60s |
+| `Cache__InstanceName` / `Cache__DefaultTtlSeconds` | configmap de cada serviço | `catalog:`/600s (10 min), `usersapi:`/60s |
 
 Em Docker Compose, os mesmos valores vêm do bloco `x-datastore-env` no [`docker-compose.yml`](docker-compose.yml).
 

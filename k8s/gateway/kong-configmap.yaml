@@ -78,12 +78,12 @@ data:
             # BEGIN-KEYCLOAK-PUBLIC-KEY (scripts/configure-kong-jwt.sh substitui este bloco)
             rsa_public_key: |
               -----BEGIN PUBLIC KEY-----
-              MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs96s0nxYjzoyuY7Rvlae
-              JZNya8j6Eg9wT3X/bqB6BAx68dCN9fqL02VrWtiC8VfetIFMsEYYZAKGIGLxfBW5
-              kADvJmL/UXm5RT8ZEwakyZJ8ePbFdu9GrvinK/CCfROcJKZmXqdUMyWA9DGrp1rY
-              cX18YHSc/UErjV+rUgvkuYNKWG5ZiCdxb6QilButvfLIZyz9pw7fD9dpROQBW/mi
-              Ll7CJSPXKdcJbIGDFNBG18D32Cet9ihyzbbp+tFkPECjf2MofeAbOLsXyGM+7uF9
-              WcaZwssxafI2dMg6+6DzC6rwPUmpQyK0NGMYx40pjWjw4JM62sIv5tltzxcxdwYQ
-              0wIDAQAB
+              MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqHDvZdAkA8nmFM0fVpyJ
+              VLjVPLchKqA6D3WlTXtKUZ9oh7tiqAH1C2G5CEvGXuEduuI+jFBqXIvrvD4joybF
+              BeHQI/iCBPhL0+mEapjHPe6e4mmYAhJ3i2E85IicDtq/Jy3eLM74M90sPw2uFLcA
+              RNl4Ea1MpmjjoVpR2D/8jSI5lRRyMv6vGar8x/uOOR78TSSXIOIaxL1akvyr8I9O
+              ipYtgpry8wYUJrQiI2pgWaHLz/x/QnYc7Klc+HXEDPzyNJRT/Skj7SMHf0APFsaS
+              B+qDkkGv5ddMzTGT2DmrR3Af0awP9yvoSxB3UGWY4Xp1lDRF0bhBkv4eSkqsNK9d
+              EwIDAQAB
               -----END PUBLIC KEY-----
             # END-KEYCLOAK-PUBLIC-KEY
