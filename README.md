@@ -686,7 +686,7 @@ PR / push em qualquer API
 [Containerização] docker buildx (cache GHA) → tags sha-<7>, latest, vX.Y.Z, X.Y
         │
         ▼
-[Security Scan] Trivy 0.69.3 → SARIF na aba Security (repos públicos) + gate CRITICAL
+[Security Scan] Trivy v0.76.1 → SARIF na aba Security (repos públicos) + gate CRITICAL
         │  (PR para aqui: nada é publicado)
         ▼
 [Push] ghcr.io/projeto-pos-tech-fiap/<serviço>
@@ -718,6 +718,10 @@ PR / push em qualquer API
 Zero downtime: os Deployments das APIs usam `RollingUpdate` com `maxSurge: 1` / `maxUnavailable: 0`, `readinessProbe` em `/health`, `minReadySeconds: 5` e `preStop` de 5s para drenar conexões. Se o novo pod não ficar pronto, o rollout falha e a versão anterior continua atendendo.
 
 Rollback GitOps: `git revert` do commit `deploy(<serviço>): ...` neste repositório.
+
+### Supply chain do Trivy
+
+A `aquasecurity/trivy-action` teve tags sobrescritas por malware em março/2026 (CVE-2026-33634 / GHSA-69fq-xp46-6x23). Por isso o pipeline referencia a action pelo commit `a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8` (release `v0.36.0`, que também fixa por SHA o `setup-trivy v0.2.6` e o `actions/cache v5.0.5`) e o binário pela versão explícita `TRIVY_VERSION`. Para atualizar, confira o SHA da nova tag em https://github.com/aquasecurity/trivy-action/releases antes de trocar.
 
 ### Configuração (plano Free)
 
