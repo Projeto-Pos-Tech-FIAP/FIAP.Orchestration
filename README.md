@@ -18,7 +18,8 @@ Repositório central de infraestrutura da **FIAP Games Platform** — contém o 
 10. [API Gateway (Kong)](#10-api-gateway-kong)
 11. [Observabilidade (Prometheus + Grafana)](#11-observabilidade-prometheus--grafana)
 12. [Persistência Poliglota — MongoDB e Redis](#12-persistência-poliglota--mongodb-e-redis)
-13. [Próximos Passos](#13-próximos-passos)
+13. [CI/CD e GitOps (GitHub Actions)](#13-cicd-e-gitops-github-actions)
+14. [Próximos Passos](#14-próximos-passos)
 
 ---
 
@@ -669,7 +670,71 @@ Em Docker Compose, os mesmos valores vêm do bloco `x-datastore-env` no [`docker
 
 ---
 
-## 13. Próximos Passos
+## 13. CI/CD e GitOps (GitHub Actions)
+
+Todo o ciclo é automatizado com GitHub Actions e o estado de produção é declarado neste repositório: o que está em `main` do FIAP.Orchestration é o que roda no cluster.
+
+### Fluxo
+
+```
+PR / push em qualquer API
+        │
+        ▼
+[Build & Test] dotnet restore/build/test (.trx + cobertura como artefato)
+        │
+        ▼
+[Containerização] docker buildx (cache GHA) → tags sha-<7>, latest, vX.Y.Z, X.Y
+        │
+        ▼
+[Security Scan] Trivy 0.69.3 → SARIF na aba Security (repos públicos) + gate CRITICAL
+        │  (PR para aqui: nada é publicado)
+        ▼
+[Push] ghcr.io/projeto-pos-tech-fiap/<serviço>
+        │
+        ▼
+[Promote] commit "deploy(<serviço>): sha-xxxxxxx" em environments/production/kustomization.yaml
+        │
+        ▼  (push em main do Orchestration)
+[Validate] kustomize build + kubeconform + guarda de rolling update + docker compose config
+        │
+        ▼
+[Deploy] kubectl apply -k environments/production → rollout status (Rolling Update, maxUnavailable=0)
+```
+
+### Workflows
+
+| Repositório | Arquivo | Papel |
+|---|---|---|
+| FIAP.Orchestration | `.github/workflows/dotnet-service.yml` | Pipeline reutilizável (`workflow_call`) das 4 APIs |
+| FIAP.Orchestration | `.github/workflows/validate.yml` | Validação dos manifestos em PR e antes do deploy |
+| FIAP.Orchestration | `.github/workflows/deploy-production.yml` | Aplica o overlay de produção no cluster |
+| FIAP.CatalogAPI / UsersAPI / PaymentAPI / NotificationsAPI | `.github/workflows/ci-cd.yml` | Chama o pipeline reutilizável |
+| FIAP.NotificationsAPI | job `deploy-lambda` em `ci-cd.yml` | Deploy opcional da Lambda (`vars.DEPLOY_LAMBDA=true`) |
+
+### Overlay de produção
+
+`environments/production/kustomization.yaml` usa `k8s/` como base e só troca as imagens `fiap/*:latest` pelas do GHCR com a tag imutável promovida pela pipeline, além de adicionar `imagePullSecrets: ghcr-pull-secret`. O fluxo local com minikube (`kubectl apply -k k8s/`) continua igual.
+
+Zero downtime: os Deployments das APIs usam `RollingUpdate` com `maxSurge: 1` / `maxUnavailable: 0`, `readinessProbe` em `/health`, `minReadySeconds: 5` e `preStop` de 5s para drenar conexões. Se o novo pod não ficar pronto, o rollout falha e a versão anterior continua atendendo.
+
+Rollback GitOps: `git revert` do commit `deploy(<serviço>): ...` neste repositório.
+
+### Configuração (plano Free)
+
+| Onde | Tipo | Nome | Valor |
+|---|---|---|---|
+| Cada repositório de API | Secret | `ORCHESTRATION_TOKEN` | PAT com escrita em `FIAP.Orchestration` (Contents: Read and write) |
+| FIAP.Orchestration | Secret | `GHCR_PULL_TOKEN` | PAT classic com `read:packages` (só se os pacotes forem privados) |
+| FIAP.Orchestration | Variable | `GHCR_PULL_USERNAME` | Usuário dono do PAT acima |
+| FIAP.Orchestration | Secret | `KUBE_CONFIG` | kubeconfig em base64 (opcional; sem ele usa o kubeconfig do runner) |
+| FIAP.Orchestration | Variable | `DEPLOY_RUNS_ON` | Label do runner de deploy (padrão `self-hosted`) |
+| FIAP.NotificationsAPI | Variable / Secrets | `DEPLOY_LAMBDA`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Deploy da Lambda (opcional) |
+
+O deploy roda em um **self-hosted runner** (gratuito e sem limite de minutos) instalado na mesma máquina/WSL do minikube, porque runners hospedados pelo GitHub não alcançam um cluster local. Com um cluster acessível pela internet, basta definir `DEPLOY_RUNS_ON=ubuntu-latest` e o secret `KUBE_CONFIG`.
+
+---
+
+## 14. Próximos Passos
 
 ### Como adicionar UserAPI / PaymentAPI / NotificationAPI
 
