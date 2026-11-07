@@ -8,6 +8,13 @@ metadata:
     tier: service
 spec:
   replicas: 1
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: catalog-api
@@ -16,10 +23,15 @@ spec:
       labels:
         app: catalog-api
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: catalog-api
           image: fiap/catalog-api:latest
           imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           ports:
             - containerPort: 8080
           envFrom:
