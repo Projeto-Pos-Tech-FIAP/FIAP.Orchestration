@@ -1,0 +1,302 @@
+name: dotnet-service
+
+on:
+  workflow_call:
+    inputs:
+      solution:
+        type: string
+        required: true
+      service-name:
+        type: string
+        required: true
+      kustomize-image-name:
+        type: string
+        required: false
+        default: ""
+      dotnet-versions:
+        type: string
+        required: false
+        default: |
+          8.0.x
+          10.0.x
+      docker-context:
+        type: string
+        required: false
+        default: "."
+      dockerfile:
+        type: string
+        required: false
+        default: "Dockerfile"
+      trivy-gate-severity:
+        type: string
+        required: false
+        default: "CRITICAL"
+      orchestration-repository:
+        type: string
+        required: false
+        default: "Projeto-Pos-Tech-FIAP/FIAP.Orchestration"
+      orchestration-overlay:
+        type: string
+        required: false
+        default: "environments/production"
+    secrets:
+      ORCHESTRATION_TOKEN:
+        required: false
+    outputs:
+      image:
+        value: ${{ jobs.container.outputs.image }}
+      image-tag:
+        value: ${{ jobs.container.outputs.image-tag }}
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  TRIVY_VERSION: "v0.76.1"
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ inputs.dotnet-versions }}
+
+      - name: Restore
+        run: dotnet restore "${{ inputs.solution }}"
+
+      - name: Build
+        run: dotnet build "${{ inputs.solution }}" -c Release --no-restore
+
+      - name: Test
+        run: >
+          dotnet test "${{ inputs.solution }}"
+          -c Release --no-build
+          --logger "trx;LogFilePrefix=results"
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+
+      - name: Test summary
+        if: always()
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          total=0; passed=0; failed=0
+          for f in TestResults/**/*.trx; do
+            counters=$(grep -o '<Counters [^>]*' "$f" || true)
+            t=$(sed -nE 's/.* total="([0-9]+)".*/\1/p' <<<"$counters")
+            p=$(sed -nE 's/.* passed="([0-9]+)".*/\1/p' <<<"$counters")
+            x=$(sed -nE 's/.* failed="([0-9]+)".*/\1/p' <<<"$counters")
+            total=$((total + ${t:-0})); passed=$((passed + ${p:-0})); failed=$((failed + ${x:-0}))
+          done
+          {
+            echo "### Testes — ${{ inputs.service-name }}"
+            echo ""
+            echo "| Total | Passou | Falhou |"
+            echo "|---|---|---|"
+            echo "| $total | $passed | $failed |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ inputs.service-name }}
+          path: TestResults
+          retention-days: 7
+          if-no-files-found: ignore
+
+  container:
+    name: Docker build, scan & push
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      actions: read
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      image-tag: ${{ steps.vars.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve image name and tags
+        id: vars
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${owner}/${{ inputs.service-name }}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.vars.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.vars.outputs.sha_tag }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.docker-context }}
+          file: ${{ inputs.docker-context }}/${{ inputs.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ steps.vars.outputs.image }}:scan
+          cache-from: type=gha,scope=${{ inputs.service-name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service-name }}
+
+      - name: Trivy scan (SARIF report)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ steps.vars.outputs.image }}:scan
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security
+        if: ${{ !github.event.repository.private && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-${{ inputs.service-name }}
+
+      - name: Trivy gate
+        id: trivy-gate
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: true
+          image-ref: ${{ steps.vars.outputs.image }}:scan
+          format: table
+          output: trivy-table.txt
+          severity: ${{ inputs.trivy-gate-severity }}
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy summary
+        if: always() && steps.trivy-gate.outcome != 'skipped'
+        shell: bash
+        run: |
+          {
+            echo "### Security scan — ${{ inputs.service-name }} (gate: ${{ inputs.trivy-gate-severity }})"
+            echo '```'
+            if [ -s trivy-table.txt ]; then cat trivy-table.txt; else echo "Nenhuma vulnerabilidade ${{ inputs.trivy-gate-severity }} corrigível encontrada."; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Login to GHCR
+        if: steps.vars.outputs.push == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push image
+        id: push
+        if: steps.vars.outputs.push == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.docker-context }}
+          file: ${{ inputs.docker-context }}/${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.service-name }}
+
+      - name: Image summary
+        if: steps.vars.outputs.push == 'true'
+        shell: bash
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Imagem publicada"
+            echo ""
+            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
+            echo ""
+            echo "$TAGS" | sed 's/^/- `/; s/$/`/'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    name: Promote to production (GitOps)
+    needs: container
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check orchestration token
+        env:
+          TOKEN: ${{ secrets.ORCHESTRATION_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Secret ORCHESTRATION_TOKEN não configurado neste repositório; não é possível atualizar ${{ inputs.orchestration-repository }}."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.orchestration-repository }}
+          token: ${{ secrets.ORCHESTRATION_TOKEN }}
+          ref: main
+          path: orchestration
+
+      - name: Update image tag and push
+        working-directory: orchestration
+        shell: bash
+        env:
+          KUSTOMIZE_IMAGE: ${{ inputs.kustomize-image-name != '' && inputs.kustomize-image-name || format('fiap/{0}', inputs.service-name) }}
+          NEW_NAME: ${{ needs.container.outputs.image }}
+          NEW_TAG: ${{ needs.container.outputs.image-tag }}
+          KUSTOMIZATION: ${{ inputs.orchestration-overlay }}/kustomization.yaml
+          SERVICE: ${{ inputs.service-name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$(yq '[.images[] | select(.name == strenv(KUSTOMIZE_IMAGE))] | length' "$KUSTOMIZATION")" != "1" ]; then
+            echo "::error::Imagem $KUSTOMIZE_IMAGE não encontrada em $KUSTOMIZATION"
+            exit 1
+          fi
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            yq -i '(.images[] | select(.name == strenv(KUSTOMIZE_IMAGE))) |= (.newName = strenv(NEW_NAME) | .newTag = strenv(NEW_TAG))' "$KUSTOMIZATION"
+            if git diff --quiet; then
+              echo "Produção já está em $NEW_NAME:$NEW_TAG"
+              exit 0
+            fi
+            git commit -am "deploy(${SERVICE}): ${NEW_TAG}" -m "Origem: ${GITHUB_REPOSITORY}@${GITHUB_SHA}" -m "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if git push origin HEAD:main; then
+              echo "### Promovido para produção: \`$NEW_NAME:$NEW_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::Não foi possível publicar a nova tag após 5 tentativas"
+          exit 1

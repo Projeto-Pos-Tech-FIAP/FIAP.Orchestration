@@ -1,0 +1,71 @@
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KUBECONFORM_VERSION: "v0.6.7"
+  K8S_SCHEMA_VERSION: "1.30.0"
+
+jobs:
+  manifests:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" kubeconform
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Render base (k8s/)
+        run: kubectl kustomize k8s > "$RUNNER_TEMP/base.yaml"
+
+      - name: Render production overlay
+        run: kubectl kustomize environments/production > "$RUNNER_TEMP/production.yaml"
+
+      - name: Schema validation
+        run: |
+          kubeconform -summary -ignore-missing-schemas \
+            -kubernetes-version "$K8S_SCHEMA_VERSION" \
+            "$RUNNER_TEMP/base.yaml" "$RUNNER_TEMP/production.yaml"
+
+      - name: Rolling update guard
+        run: |
+          bad=$(yq ea 'select(.kind == "Deployment" and .metadata.labels.tier == "service" and .spec.strategy.rollingUpdate.maxUnavailable != 0) | .metadata.name' "$RUNNER_TEMP/production.yaml")
+          if [ -n "$bad" ]; then
+            echo "::error::Deployments sem maxUnavailable=0 (risco de downtime): $bad"
+            exit 1
+          fi
+          missing=$(yq ea 'select(.kind == "Deployment" and .metadata.labels.tier == "service" and .spec.template.spec.containers[0].readinessProbe == null) | .metadata.name' "$RUNNER_TEMP/production.yaml")
+          if [ -n "$missing" ]; then
+            echo "::error::Deployments sem readinessProbe: $missing"
+            exit 1
+          fi
+
+      - name: Production images
+        run: |
+          {
+            echo "### Imagens em produção"
+            echo ""
+            yq ea 'select(.kind == "Deployment") | "- `" + .metadata.name + "` → `" + .spec.template.spec.containers[0].image + "`"' "$RUNNER_TEMP/production.yaml"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  compose:
+    name: Validate docker-compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: docker compose config
+        run: |
+          cp .env.example .env
+          docker compose config -q
