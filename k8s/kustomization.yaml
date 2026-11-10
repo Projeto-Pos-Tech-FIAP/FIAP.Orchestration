@@ -14,20 +14,13 @@ resources:
   - configmaps/payment-api-configmap.yaml
   - configmaps/notification-api-configmap.yaml
 
-  # 3. Secrets (sensíveis)
-  - secrets/infra-secret.yaml
-  - secrets/catalog-api-secret.yaml
-  - secrets/user-api-secret.yaml
-  - secrets/payment-api-secret.yaml
-  - secrets/notification-api-secret.yaml
-
-  # 4. PersistentVolumeClaims
+  # 3. PersistentVolumeClaims
   - infrastructure/sqlserver-pvc.yaml
   - infrastructure/mongodb-pvc.yaml
   - infrastructure/kafka-pvc.yaml
   - infrastructure/keycloak-postgres-pvc.yaml
 
-  # 5. Infraestrutura
+  # 4. Infraestrutura
   - infrastructure/sqlserver-deployment.yaml
   - infrastructure/sqlserver-service.yaml
   - infrastructure/mongodb-deployment.yaml
@@ -43,7 +36,7 @@ resources:
   - infrastructure/keycloak-deployment.yaml
   - infrastructure/keycloak-service.yaml
 
-  # 6. Microserviços
+  # 5. Microserviços
   - services/catalog-api-deployment.yaml
   - services/catalog-api-service.yaml
   - services/user-api-deployment.yaml
@@ -53,7 +46,7 @@ resources:
   - services/notification-api-deployment.yaml
   - services/notification-api-service.yaml
 
-  # 7. Observabilidade (Prometheus + Grafana)
+  # 6. Observabilidade (Prometheus + Grafana)
   - monitoring/prometheus-configmap.yaml
   - monitoring/prometheus-deployment.yaml
   - monitoring/prometheus-service.yaml
@@ -62,7 +55,7 @@ resources:
   - monitoring/grafana-deployment.yaml
   - monitoring/grafana-service.yaml
 
-  # 8. API Gateway (Kong) — único ponto de entrada externo do sistema
+  # 7. API Gateway (Kong) — único ponto de entrada externo do sistema
   - gateway/kong-configmap.yaml
   - gateway/kong-deployment.yaml
   - gateway/kong-service.yaml

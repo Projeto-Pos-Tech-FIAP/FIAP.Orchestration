@@ -74,7 +74,6 @@ source/repos/
 │   │   └── FIAP.CatalogAPI.Tests/
 │   ├── k8s/                       ← Manifestos K8s do próprio serviço
 │   │   ├── configmap.yaml
-│   │   ├── secret.yaml
 │   │   ├── deployment.yaml
 │   │   └── service.yaml
 │   ├── Dockerfile                 ← Multi-stage build
@@ -83,12 +82,12 @@ source/repos/
 └── FIAP.Orchestration/            ← Este repositório (infraestrutura)
     ├── docker-compose.yml         ← Stack completa local
     ├── scripts/
-    │   └── configure-kong-jwt.sh  ← Injeta a chave pública do Keycloak no Kong
+    │   ├── configure-kong-jwt.sh  ← Injeta a chave pública do Keycloak no Kong
+    │   └── create-k8s-secrets.sh  ← Cria os Secrets no cluster a partir do .env
     └── k8s/
         ├── 00-namespace.yaml
         ├── kustomization.yaml     ← Aplica tudo com 1 comando
         ├── configmaps/            ← Dados não-sensíveis
-        ├── secrets/               ← Dados sensíveis
         ├── infrastructure/        ← SQL, Mongo, Redis, Kafka, Keycloak
         ├── services/              ← Todos os microserviços
         ├── monitoring/            ← Prometheus + Grafana
@@ -360,8 +359,8 @@ docker-compose down -v
 |---|---|---|
 | CatalogAPI | http://localhost:5001/swagger | — |
 | Kafka UI | http://localhost:8090 | — |
-| SQL Server | localhost:1433 | `sa` / `PosTech@123` |
-| MongoDB | localhost:27018 | `admin` / `PosTech@123` |
+| SQL Server | localhost:1433 | `sa` / definida no `.env` |
+| MongoDB | localhost:27018 | definidas no `.env` |
 | Redis | localhost:6379 | sem autenticação |
 | Kafka | localhost:9092 | bootstrap server |
 
@@ -383,14 +382,17 @@ kind load docker-image fiap/catalog-api:latest
 # ou para k3d:
 k3d image import fiap/catalog-api:latest -c <nome-do-cluster>
 
-# Passo 3: Aplicar todos os manifestos com Kustomize
+# Passo 3: Criar os Secrets a partir do .env (copie o .env.example e troque os CHANGE_ME)
 cd FIAP.Orchestration
+bash scripts/create-k8s-secrets.sh
+
+# Passo 4: Aplicar todos os manifestos com Kustomize
 kubectl apply -k k8s/
 
-# Passo 4: Aguardar pods iniciarem
+# Passo 5: Aguardar pods iniciarem
 kubectl get pods -n fiap-games -w
 
-# Passo 5: Port-forward para acessar a API
+# Passo 6: Port-forward para acessar a API
 kubectl port-forward svc/catalog-api 5001:80 -n fiap-games
 # Abrir: http://localhost:5001/swagger
 ```
@@ -420,7 +422,22 @@ kubectl rollout undo deployment/catalog-api -n fiap-games
 kubectl delete -k k8s/
 ```
 
-> **Secrets em produção:** os arquivos `secrets/*.yaml` contêm credenciais em texto plano. Para ambientes reais, use **Sealed Secrets**, **External Secrets Operator** ou **HashiCorp Vault** — nunca commite credenciais reais no Git.
+> **Segredos:** nenhum manifesto versionado contém credenciais. Os Secrets do Kubernetes são criados à parte e injetados nos pods em tempo de execução — ver [Gestão de Segredos](#gestão-de-segredos).
+
+### Gestão de Segredos
+
+| Onde | Origem dos valores | Como chegam ao processo |
+|---|---|---|
+| Kubernetes (local) | `.env` fora do git → `bash scripts/create-k8s-secrets.sh` | `envFrom.secretRef` e `secretKeyRef` |
+| Kubernetes (pipeline) | GitHub Secrets → step *Ensure application secrets* do `deploy-production.yml` | idem |
+| Docker Compose | `.env` fora do git | interpolação `${VAR:?}`; o compose falha se faltar variável |
+| `dotnet run` | [User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) de cada API | carregado automaticamente em `Development` |
+
+O script cria `infra-secret`, `catalog-api-secret`, `user-api-secret`, `payment-api-secret` e `notification-api-secret` e pode ser reexecutado. Ele recusa valores `CHANGE_ME` e monta as connection strings a partir de `MSSQL_SA_PASSWORD`.
+
+O client secret do Keycloak fica no realm como o placeholder `${KEYCLOAK_CLIENT_SECRET}`, resolvido pelo `--import-realm` a partir da variável de ambiente do container. A sonda do SQL Server lê a senha da variável do próprio container.
+
+**Rotação de credenciais:** SQL Server, MongoDB, Postgres e o realm do Keycloak só leem esses valores ao inicializar um volume vazio. Para trocar uma senha com dados já existentes, altere-a também dentro do serviço; num ambiente descartável, basta apagar os PVCs e aplicar de novo.
 
 ---
 
@@ -626,9 +643,9 @@ curl -s "http://localhost:30080/api/eventlog?service=PaymentAPI&eventType=Paymen
 Ou direto no banco:
 
 ```bash
-kubectl exec -n fiap-games deploy/mongodb -- mongosh -u admin -p 'PosTech@123' \
+kubectl exec -n fiap-games deploy/mongodb -- sh -c 'mongosh -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" \
   --authenticationDatabase admin --quiet --eval \
-  'db.getSiblingDB("FcgEvents").EventLogs.find().sort({occurredAt:-1}).limit(10)'
+  "db.getSiblingDB(\"FcgEvents\").EventLogs.find().sort({occurredAt:-1}).limit(10)"'
 ```
 
 > **Falha ao gravar o log nunca derruba o fluxo de negócio.** O `MongoEventLogService` captura exceções e registra um erro no log da aplicação: o evento já foi publicado no Kafka e a compra segue — o log é observabilidade, não parte da transação.
@@ -661,7 +678,7 @@ Escritas invalidam por prefixo (`catalog:games:` / `usersapi:users:`) — derrub
 |---|---|---|
 | `MongoDb__Host` / `__Port` | [`k8s/configmaps/shared-configmap.yaml`](k8s/configmaps/shared-configmap.yaml) | `mongodb` / `27017` |
 | `MongoDb__EventsDatabaseName` / `__EventsCollectionName` | `shared-configmap.yaml` | `FcgEvents` / `EventLogs` |
-| `MongoDb__Username` / `__Password` | `k8s/secrets/{catalog,user,payment}-api-secret.yaml` | Secret |
+| `MongoDb__Username` / `__Password` | Secrets `{catalog,user,payment}-api-secret` (criados por `scripts/create-k8s-secrets.sh`) | Secret |
 | `MongoDb__DatabaseName` / `__CollectionName` (audit) | [`k8s/configmaps/catalog-api-configmap.yaml`](k8s/configmaps/catalog-api-configmap.yaml) | `CatalogAudit` / `AuditLogs` |
 | `ConnectionStrings__Redis` | `shared-configmap.yaml` | `redis:6379` |
 | `Cache__InstanceName` / `Cache__DefaultTtlSeconds` | configmap de cada serviço | `catalog:`/600s (10 min), `usersapi:`/60s |
@@ -731,6 +748,7 @@ A `aquasecurity/trivy-action` teve tags sobrescritas por malware em março/2026 
 | FIAP.Orchestration | Secret | `GHCR_PULL_TOKEN` | PAT classic com `read:packages` (só se os pacotes forem privados) |
 | FIAP.Orchestration | Variable | `GHCR_PULL_USERNAME` | Usuário dono do PAT acima |
 | FIAP.Orchestration | Secret | `KUBE_CONFIG` | kubeconfig em base64 (opcional; sem ele usa o kubeconfig do runner) |
+| FIAP.Orchestration | Secrets | `MSSQL_SA_PASSWORD`, `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, `KEYCLOAK_POSTGRES_USER`, `KEYCLOAK_POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_CLIENT_SECRET`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Credenciais gravadas nos Secrets do cluster a cada deploy. Sem eles, o deploy exige que os Secrets já existam no cluster |
 | FIAP.Orchestration | Variable | `DEPLOY_RUNS_ON` | Label do runner de deploy (padrão `self-hosted`) |
 | FIAP.NotificationsAPI | Variable / Secrets | `DEPLOY_LAMBDA`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Deploy da Lambda (opcional) |
 
@@ -748,7 +766,7 @@ Cada novo microserviço segue o mesmo padrão do CatalogAPI:
 |---|---|
 | 1 | Criar repositório `FIAP.UserAPI` com a mesma Clean Architecture |
 | 2 | Adicionar `Dockerfile` multi-stage e `.dockerignore` |
-| 3 | Criar `k8s/` com configmap, secret, deployment e service |
+| 3 | Criar `k8s/` com configmap, deployment e service; o Secret entra em `scripts/create-k8s-secrets.sh` |
 | 4 | No `docker-compose.yml`: descomentar o bloco do serviço |
 | 5 | Fazer o `docker build` e `kubectl apply` |
 

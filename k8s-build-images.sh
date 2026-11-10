@@ -22,4 +22,4 @@ docker build -t fiap/notifications-api:latest ./FIAP.NotificationsAPI
 
 echo ""
 echo "4 imagens buildadas. Agora aplique os manifestos com:"
-echo "  kubectl apply -k k8s/"
+echo "  bash scripts/create-k8s-secrets.sh && kubectl apply -k k8s/"

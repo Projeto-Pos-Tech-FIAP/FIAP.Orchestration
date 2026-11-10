@@ -13,14 +13,14 @@ x-keycloak-env: &keycloak-client-env
   Keycloak__BaseUrl: http://keycloak:8080/
   Keycloak__Realm: TechChallengeFiap
   Keycloak__ClientId: tech-challenge
-  Keycloak__ClientSecret: TDB539JXqWeqNmrzFwtT7UNMQXtIwj1Y
+  Keycloak__ClientSecret: "${KEYCLOAK_CLIENT_SECRET:?defina no .env}"
 
 x-datastore-env: &datastore-env
   # MongoDB — logs de eventos de integração (coleção compartilhada entre os serviços)
   MongoDb__Host: mongodb
   MongoDb__Port: "27017"
-  MongoDb__Username: admin
-  MongoDb__Password: "PosTech@123"
+  MongoDb__Username: "${MONGO_INITDB_ROOT_USERNAME:?defina no .env}"
+  MongoDb__Password: "${MONGO_INITDB_ROOT_PASSWORD:?defina no .env}"
   MongoDb__EventsDatabaseName: FcgEvents
   MongoDb__EventsCollectionName: EventLogs
   # Redis — cache distribuído
@@ -32,13 +32,13 @@ services:
     container_name: fiap-sqlserver
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "PosTech@123"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?defina no .env}"
     ports:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'PosTech@123' -Q 'SELECT 1' -No || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -No || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -47,8 +47,8 @@ services:
     image: mongo:7
     container_name: fiap-mongodb
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: "PosTech@123"
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME:?defina no .env}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD:?defina no .env}"
     ports:
       - "27018:27017"
     volumes:
@@ -116,10 +116,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_SASL_ENABLED_MECHANISMS: "PLAIN"
-      KAFKA_LISTENER_NAME_TUNNEL_PLAIN_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="lambda" password="${KAFKA_TUNNEL_SASL_PASSWORD:-kafka-tunnel-default-pass}" user_lambda="${KAFKA_TUNNEL_SASL_PASSWORD:-kafka-tunnel-default-pass}";'
+      KAFKA_LISTENER_NAME_TUNNEL_PLAIN_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="lambda" password="${KAFKA_TUNNEL_SASL_PASSWORD:?defina no .env}" user_lambda="${KAFKA_TUNNEL_SASL_PASSWORD:?defina no .env}";'
       KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.keystore.p12
-      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:-kafka-tunnel-default-pass}"
-      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEY_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:-kafka-tunnel-default-pass}"
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:?defina no .env}"
+      KAFKA_LISTENER_NAME_TUNNEL_SSL_KEY_PASSWORD: "${KAFKA_TUNNEL_KEYSTORE_PASSWORD:?defina no .env}"
       KAFKA_LISTENER_NAME_TUNNEL_SSL_KEYSTORE_TYPE: PKCS12
       KAFKA_LISTENER_NAME_TUNNEL_SSL_CLIENT_AUTH: none
       # KAFKA_AUTO_CREATE_TOPICS_ENABLE já cria os tópicos (order-placed, payment-processed,
@@ -159,14 +159,14 @@ services:
     restart: always
     environment:
       POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak
+      POSTGRES_USER: "${KEYCLOAK_POSTGRES_USER:?defina no .env}"
+      POSTGRES_PASSWORD: "${KEYCLOAK_POSTGRES_PASSWORD:?defina no .env}"
     ports:
       - "5432:5432"
     volumes:
       - keycloak_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d keycloak"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -181,12 +181,13 @@ services:
       keycloak-postgres:
         condition: service_healthy
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN:?defina no .env}"
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?defina no .env}"
+      KEYCLOAK_CLIENT_SECRET: "${KEYCLOAK_CLIENT_SECRET:?defina no .env}"
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
+      KC_DB_USERNAME: "${KEYCLOAK_POSTGRES_USER:?defina no .env}"
+      KC_DB_PASSWORD: "${KEYCLOAK_POSTGRES_PASSWORD:?defina no .env}"
       KC_HEALTH_ENABLED: "true"
     ports:
       - "8081:8080"
@@ -213,7 +214,7 @@ services:
       <<: [*kafka-env, *keycloak-client-env, *datastore-env]
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=CatalogAPI;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=CatalogAPI;User Id=sa;Password=${MSSQL_SA_PASSWORD:?defina no .env};TrustServerCertificate=True"
       # Base/coleção de auditoria (só a CatalogAPI tem); os logs de eventos usam a base
       # compartilhada definida em x-datastore-env.
       MongoDb__DatabaseName: CatalogAudit
@@ -244,7 +245,7 @@ services:
       <<: [*kafka-env, *keycloak-client-env, *datastore-env]
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=UsuariosDb;User Id=sa;Password=PosTech@123;TrustServerCertificate=True"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=UsuariosDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?defina no .env};TrustServerCertificate=True"
       Cache__InstanceName: "usersapi:"
       Cache__DefaultTtlSeconds: "60"
     restart: on-failure
@@ -301,8 +302,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:?defina no .env}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?defina no .env}"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro

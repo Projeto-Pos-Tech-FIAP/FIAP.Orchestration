@@ -27,7 +27,7 @@ Acessos:
 
 | Serviço | URL | Login |
 |---|---|---|
-| Grafana | http://localhost:3000 | admin / admin123 |
+| Grafana | http://localhost:3000 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` do `.env` |
 | Prometheus | http://localhost:9090 | — |
 | Catalog `/metrics` | http://localhost:5001/metrics | — |
 | Users `/metrics` | http://localhost:5002/metrics | — |
@@ -68,7 +68,7 @@ O dashboard já vem pronto (provisionado). Este guia é para reproduzir/entender
 
 1. Suba a stack (`docker compose up -d`) e gere algumas requisições nas APIs.
 2. Confirme em http://localhost:9090/targets que os jobs estão **UP**.
-3. Abra http://localhost:3000 e faça login (`admin` / `admin123`).
+3. Abra http://localhost:3000 e faça login com `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` do `.env`.
 
 ### 2. Datasource (se ainda não existir)
 

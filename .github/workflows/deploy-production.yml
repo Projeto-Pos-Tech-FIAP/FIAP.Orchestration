@@ -74,6 +74,32 @@ jobs:
             --docker-password="$GHCR_PULL_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Ensure application secrets
+        shell: bash
+        env:
+          MSSQL_SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+          MONGO_INITDB_ROOT_USERNAME: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
+          KEYCLOAK_POSTGRES_USER: ${{ secrets.KEYCLOAK_POSTGRES_USER }}
+          KEYCLOAK_POSTGRES_PASSWORD: ${{ secrets.KEYCLOAK_POSTGRES_PASSWORD }}
+          KEYCLOAK_ADMIN: ${{ secrets.KEYCLOAK_ADMIN }}
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          KEYCLOAK_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CLIENT_SECRET }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          if [ -n "$MSSQL_SA_PASSWORD" ]; then
+            bash scripts/create-k8s-secrets.sh
+            exit 0
+          fi
+          echo "Secrets da aplicação não configurados no GitHub: exigindo os já existentes no cluster."
+          for s in infra-secret catalog-api-secret user-api-secret payment-api-secret notification-api-secret; do
+            if ! kubectl get secret "$s" -n "$NAMESPACE" > /dev/null; then
+              echo "::error::Secret $s não existe no cluster. Rode scripts/create-k8s-secrets.sh ou configure os secrets no GitHub."
+              exit 1
+            fi
+          done
+
       - name: Diff
         shell: bash
         run: kubectl diff -k "$OVERLAY" || true

@@ -53,6 +53,11 @@ spec:
                   key: KEYCLOAK_POSTGRES_PASSWORD
             - name: KC_HEALTH_ENABLED
               value: "true"
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: infra-secret
+                  key: KEYCLOAK_CLIENT_SECRET
           volumeMounts:
             - name: keycloak-realm
               mountPath: /opt/keycloak/data/import
