@@ -1,5 +1,12 @@
 # Como rodar o projeto
 
+Antes de qualquer opção, crie o `.env` (fora do git) e troque todo `CHANGE_ME` por um valor seu:
+
+```bash
+cd FIAP.Orchestration
+cp .env.example .env
+```
+
 ## Opção 1 — Docker Compose (mais rápido, pra testar local)
 
 ```bash
@@ -8,7 +15,7 @@ docker compose up -d --build
 docker compose ps          # confirma tudo Up/healthy
 ```
 
-> **Se o Kafka sair com `Exited (1)` e o log disser `keystore password was incorrect`:** seu `.env` define `KAFKA_TUNNEL_KEYSTORE_PASSWORD` (a senha dos certificados reais) mas não define `KAFKA_CERTS_DIR` — aí o compose monta o keystore *placeholder* de `kafka-certs-default/` com a senha real. Ou acrescente `KAFKA_CERTS_DIR=../FIAP.NotificationsAPI/kafka-certs` ao `.env`, ou remova a linha da senha para voltar ao par placeholder/senha padrão.
+> **Se o Kafka sair com `Exited (1)` e o log disser `keystore password was incorrect`:** seu `.env` define `KAFKA_TUNNEL_KEYSTORE_PASSWORD` (a senha dos certificados reais) mas não define `KAFKA_CERTS_DIR` — aí o compose monta o keystore *placeholder* de `kafka-certs-default/` com a senha real. Ou acrescente `KAFKA_CERTS_DIR=../FIAP.NotificationsAPI/kafka-certs` ao `.env`, ou volte as duas senhas `KAFKA_TUNNEL_*` aos valores do `.env.example`, que abrem o keystore placeholder.
 >
 > A porta **1433** também precisa estar livre — um SQL Server de outro projeto rodando nela impede o `fiap-sqlserver` de subir.
 
@@ -38,10 +45,13 @@ Tudo a partir da pasta `FIAP.Orchestration` — o script `k8s-build-images.sh` j
 # 1. Buildar as 4 imagens direto no Docker do Minikube
 wsl.exe -d debian -e bash -lc "cd /home/brunomateus/projects/personal/fiap/FIAP.Orchestration && ./k8s-build-images.sh"
 
-# 2. Aplicar todos os manifestos
+# 2. Criar os Secrets no cluster a partir do .env
+wsl.exe -d debian -e bash -lc "cd /home/brunomateus/projects/personal/fiap/FIAP.Orchestration && bash scripts/create-k8s-secrets.sh"
+
+# 3. Aplicar todos os manifestos
 wsl.exe -d debian -e bash -lc "cd /home/brunomateus/projects/personal/fiap/FIAP.Orchestration && kubectl apply -k k8s/"
 
-# 3. Acompanhar até todos ficarem 1/1 Ready (leva alguns minutos na primeira vez, baixando imagens)
+# 4. Acompanhar até todos ficarem 1/1 Ready (leva alguns minutos na primeira vez, baixando imagens)
 wsl.exe -d debian -e bash -lc "kubectl get pods -n fiap-games -w"
 ```
 
@@ -69,7 +79,7 @@ wsl.exe -d debian -e bash -lc "minikube delete"                    # apaga tudo 
 
 O banco começa vazio. Antes de testar o fluxo de compra:
 
-1. **Criar usuário no Keycloak**: `http://localhost:8081` → login `admin`/`admin123` → trocar realm pra `TechChallengeFiap` → **Users** → **Add user** → aba **Credentials** → **Set password** (desmarcar **Temporary**)
+1. **Criar usuário no Keycloak**: `http://localhost:8081` → login com `KEYCLOAK_ADMIN`/`KEYCLOAK_ADMIN_PASSWORD` do `.env` → trocar realm pra `TechChallengeFiap` → **Users** → **Add user** → aba **Credentials** → **Set password** (desmarcar **Temporary**)
 2. **Cadastrar um jogo**: `POST /api/Game` no CatalogAPI (sem autenticação)
 3. **Logar**: `POST /api/Auth/login` no UsersAPI com o usuário criado → pegar o `access_token`
 4. **Comprar**: `POST /api/Purchase` no CatalogAPI com `Authorization: Bearer <token>` e `{"gameId": <id do passo 2>}`

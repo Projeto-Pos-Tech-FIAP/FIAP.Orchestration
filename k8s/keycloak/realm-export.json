@@ -922,7 +922,7 @@
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "TDB539JXqWeqNmrzFwtT7UNMQXtIwj1Y",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
       "redirectUris": [
         "*"
       ],
