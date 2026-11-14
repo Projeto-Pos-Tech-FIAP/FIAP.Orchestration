@@ -20,7 +20,8 @@ Repositório central de infraestrutura da **FIAP Games Platform** — contém o 
 12. [Persistência Poliglota — MongoDB e Redis](#12-persistência-poliglota--mongodb-e-redis)
 13. [CI/CD e GitOps (GitHub Actions)](#13-cicd-e-gitops-github-actions)
 14. [Busca Avançada — Elasticsearch](#14-busca-avançada--elasticsearch)
-15. [Próximos Passos](#15-próximos-passos)
+15. [Infraestrutura Gerenciada no Azure — AKS e ACR](#15-infraestrutura-gerenciada-no-azure--aks-e-acr)
+16. [Próximos Passos](#16-próximos-passos)
 
 ---
 
@@ -822,7 +823,68 @@ Detalhes do mapping, do analisador e do comportamento sob falha em [`FIAP.Catalo
 
 ---
 
-## 15. Próximos Passos
+## 15. Infraestrutura Gerenciada no Azure — AKS e ACR
+
+O ambiente de produção é um **Kubernetes gerenciado** (AKS) com **registry privado nativo da cloud** (ACR). O cluster local com minikube continua valendo para desenvolvimento — a diferença entre os dois está no overlay, não no código nem na imagem.
+
+### O que o provisionamento cria
+
+| Recurso | Para que serve |
+|---|---|
+| Resource group `rg-fcg-prod` | Agrupa tudo; apagar o grupo apaga a conta do mês |
+| **ACR** (sku Basic, `--admin-enabled false`) | Registry privado. Sem usuário e senha de registry: o acesso é por identidade |
+| **AKS** (tier Free, 2 × `Standard_B2s`, Entra ID + RBAC do Azure) | Cluster gerenciado. `--attach-acr` dá `AcrPull` à identidade do kubelet, então **nenhum `imagePullSecret` existe no cluster** |
+| **Managed identity** + federated credentials | Identidade que o GitHub Actions assume por OIDC |
+| Load Balancer público | Criado pelo Azure quando o `kong-proxy` sobe como `LoadBalancer` no overlay de produção |
+
+```bash
+az login
+ACR_NAME=acrfcg$RANDOM bash scripts/azure-provision.sh
+```
+
+O script é idempotente e imprime no fim as *Variables* a configurar no GitHub. Para desligar e parar o custo: `az group delete --name rg-fcg-prod --yes`.
+
+> **Custo:** o control plane do AKS no tier Free não é cobrado, mas nós, discos, Load Balancer e tráfego são. A ordem de grandeza da configuração padrão é de algumas dezenas de dólares por mês.
+
+### Autenticação sem segredo — OIDC
+
+Nem a pipeline nem o deploy guardam credencial de nuvem. O runner troca o próprio token do GitHub por um token do Azure, e o Azure só aceita a troca se o `subject` do token casar com um federated credential registrado:
+
+```
+repo:Projeto-Pos-Tech-FIAP/FIAP.CatalogAPI:ref:refs/heads/main   → publicar imagem no ACR
+repo:Projeto-Pos-Tech-FIAP/FIAP.Orchestration:environment:production → aplicar manifesto no AKS
+```
+
+A identidade recebe exatamente três papéis: `AcrPush` no registry, *Cluster User* no AKS e **RBAC Writer apenas no namespace `fiap-games`** — a pipeline não consegue alterar RBAC nem tocar em outros namespaces.
+
+### Variables (nenhum Secret)
+
+| Variable | Exemplo | Efeito |
+|---|---|---|
+| `ACR_LOGIN_SERVER` | `acrfcg123.azurecr.io` | Definida: a pipeline publica no ACR. Vazia: publica no GHCR |
+| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | — | Identidade assumida por OIDC |
+| `AKS_RESOURCE_GROUP` / `AKS_CLUSTER_NAME` | `rg-fcg-prod` / `aks-fcg-prod` | Definidas: o deploy pega o kubeconfig com `az aks get-credentials`. Vazias: usa o Secret `KUBE_CONFIG` |
+
+Definidas no nível da organização, valem para os cinco repositórios de uma vez. A troca de GHCR para ACR é só a Variable: a pipeline grava no overlay o registry em que publicou, e o commit de deploy registra a mudança.
+
+### Exposição externa
+
+`environments/production/kustomization.yaml` troca o `kong-proxy` de `NodePort` para `LoadBalancer`. O Azure provisiona o Load Balancer e devolve o IP público:
+
+```bash
+kubectl get svc kong-proxy -n fiap-games -w
+curl -s http://<EXTERNAL-IP>:8000/api/game
+```
+
+As APIs seguem `ClusterIP` — Kong continua sendo o único ponto de entrada.
+
+### Elasticsearch gerenciado
+
+O cluster in-cluster (`k8s/infrastructure/elasticsearch-*.yaml`) atende o requisito funcional, mas para endpoint gerenciado (Elastic Cloud na Azure ou Amazon OpenSearch) **não há mudança de código**: basta apontar `Elasticsearch__Uri` no ConfigMap do catálogo e pôr `ELASTICSEARCH_API_KEY` no `.env` antes de rodar `scripts/create-k8s-secrets.sh`.
+
+---
+
+## 16. Próximos Passos
 
 ### Como adicionar UserAPI / PaymentAPI / NotificationAPI
 

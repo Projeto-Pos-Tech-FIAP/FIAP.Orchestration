@@ -32,10 +32,12 @@
 
 | Exigência | Status | Onde está |
 |---|---|---|
-| Cluster Kubernetes gerenciado (EKS/AKS/GKE/OKE) | ⚠️ **pendente** | «provedor, região e nome do cluster» |
-| Registry privado nativo da cloud | ⚠️ **pendente** | Hoje as imagens vão para o GHCR (`ghcr.io/projeto-pos-tech-fiap/*`), definido em [`environments/production/kustomization.yaml`](environments/production/kustomization.yaml) |
-| Exposição externa via Load Balancer ou Ingress | ⚠️ **pendente** | Kong é o único ponto de entrada ([`k8s/gateway/`](k8s/gateway/)), hoje como `NodePort 30080` |
+| Provedor de nuvem | **Azure** | AKS + ACR + Load Balancer, região `brazilsouth` |
+| Cluster Kubernetes gerenciado (AKS) | ⚠️ **a aplicar** | IaC pronta em [`scripts/azure-provision.sh`](scripts/azure-provision.sh) (idempotente); falta `az login` e rodar. Nome: «aks-fcg-prod» |
+| Registry privado nativo da cloud (ACR) | ⚠️ **a aplicar** | Criado pelo mesmo script. A pipeline publica no ACR assim que a Variable `ACR_LOGIN_SERVER` existir; sem ela usa o GHCR |
+| Exposição externa via Load Balancer | ✅ | [`environments/production/kustomization.yaml`](environments/production/kustomization.yaml) troca o `kong-proxy` para `type: LoadBalancer`; o Azure provisiona o LB |
 | Manifestos de infraestrutura versionados | ✅ | [`k8s/`](k8s/) com Kustomize + overlay [`environments/production/`](environments/production/) |
+| Documentação | ✅ | [README § 15 — Infraestrutura Gerenciada no Azure](README.md#15-infraestrutura-gerenciada-no-azure--aks-e-acr) |
 
 ### 3.2 Persistência poliglota e alta performance
 
@@ -56,7 +58,7 @@
 | Fuzzy search | ✅ | `multi_match` com `fuzziness: AUTO` e `fuzzy_transpositions` |
 | Ordenação por relevância | ✅ | `_score` do Elasticsearch; `match_phrase` no título com `boost: 6` põe o acerto exato acima do aproximado |
 | Sincronização na escrita | ✅ | `GameService`: POST/PUT reindexam e DELETE remove, com `refresh=true`; `POST /api/search/reindex` reconcilia o índice |
-| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **pendente** | Cluster roda in-cluster ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)); `Elasticsearch__Uri` + `Elasticsearch__ApiKey` já permitem apontar para endpoint gerenciado sem mudar imagem |
+| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **opcional** | Cluster roda in-cluster ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)). Apontar para Elastic Cloud é mudança de configuração, não de código: `Elasticsearch__Uri` no ConfigMap + `ELASTICSEARCH_API_KEY` no `.env` |
 | Documentação | ✅ | [README § 14 — Busca Avançada](README.md#14-busca-avançada--elasticsearch) |
 
 ### 3.4 Automação de CI/CD e GitOps
@@ -68,16 +70,17 @@
 | Build & Test | ✅ | `dotnet build` + `dotnet test` com resumo e artefato de resultados |
 | Containerização com versionamento | ✅ | `docker/metadata-action` gera tags por SHA e por `v*.*.*` |
 | Security scan (desejável) | ✅ | Trivy com SARIF no GitHub Security e gate em `CRITICAL` |
-| Push para o registry | ✅ | GHCR (ver 3.1 — registry da cloud pendente) |
-| Deploy sem downtime (Rolling Update) | ⚠️ **parcial** | Manifestos com `maxUnavailable: 0` e [`deploy-production.yml`](.github/workflows/deploy-production.yml) prontos; o job nunca concluiu — ver § 5 |
+| Push para o registry | ✅ | ACR por OIDC quando `ACR_LOGIN_SERVER` está definida; GHCR como transição |
+| Deploy sem downtime (Rolling Update) | ⚠️ **a validar** | Manifestos com `maxUnavailable: 0` e [`deploy-production.yml`](.github/workflows/deploy-production.yml) em `ubuntu-latest` com `az aks get-credentials`; falta a primeira execução contra o AKS |
 | Documentação | ✅ | [README § 13 — CI/CD e GitOps](README.md#13-cicd-e-gitops-github-actions) |
 
 ### 3.5 Segurança e gestão de segredos
 
 | Exigência | Status | Onde está |
 |---|---|---|
-| Zero hardcoded credentials | ⚠️ **parcial** | Orchestration e Catalog já limpos; PRs abertos em Users (#3), Payment (#3) e Notifications (#2) |
+| Zero hardcoded credentials | ✅ | Os cinco repositórios limpos — nenhuma connection string, senha ou client secret em código ou YAML |
 | Injeção via Secrets do Kubernetes | ✅ | [`scripts/create-k8s-secrets.sh`](scripts/create-k8s-secrets.sh) cria `infra-secret` e os `*-api-secret`; os pods leem por `envFrom`/`secretKeyRef` |
+| Credencial de nuvem na pipeline | ✅ | **Nenhuma**: GitHub Actions autentica no Azure por OIDC com federated credentials, sem client secret e sem `KUBE_CONFIG` |
 | Nenhum Secret versionado | ✅ | Nenhum `kind: Secret` com dados reais no Git; desenvolvimento local usa User Secrets e `.env` fora do repositório |
 | Documentação | ✅ | [README — Gestão de Segredos](README.md#gestão-de-segredos) |
 
@@ -106,8 +109,9 @@ Os quatro itens exigidos pelo enunciado, na ordem sugerida:
 
 Em ordem de bloqueio:
 
-1. **`ORCHESTRATION_TOKEN` sem permissão de escrita** — o job *Promote to production (GitOps)* falha com `403` ao atualizar a tag no FIAP.Orchestration. Precisa de um PAT com `Contents: Read and write` nos quatro repositórios de API. Enquanto isso, a `main` não reflete produção e o live deploy não roda de ponta a ponta.
-2. **Cluster gerenciado na cloud** — hoje o ambiente é minikube local; falta provisionar EKS/AKS/GKE/OKE, trocar o registry para o nativo da cloud e expor o Kong por Load Balancer/Ingress.
-3. **Runner e segredos do deploy** — `deploy-production.yml` roda em `self-hosted` (variável `DEPLOY_RUNS_ON`), e o repositório não tem `KUBE_CONFIG` nem os segredos de aplicação configurados.
-4. **PRs de gestão de segredos** abertos em UsersAPI (#3), PaymentAPI (#3) e NotificationsAPI (#2).
-5. **Vídeo e preenchimento deste relatório** — depende dos itens 1 a 3 para a parte do live deploy.
+1. **`ORCHESTRATION_TOKEN` sem permissão de escrita** — o job *Promote to production (GitOps)* falha com `403` ao atualizar a tag no FIAP.Orchestration. Precisa de um PAT com `Contents: Read and write` nos quatro repositórios de API; o GitHub só emite PAT pela interface web. Enquanto isso, a `main` não reflete produção e o live deploy não roda de ponta a ponta.
+2. **Provisionar o Azure** — `az login` e `ACR_NAME=... bash scripts/azure-provision.sh`. Leva ~5 min e **gera custo** na subscription.
+3. **Variables no GitHub** — as seis que o script imprime no fim (`ACR_LOGIN_SERVER`, `AZURE_*`, `AKS_*`), de preferência no nível da organização.
+4. **Segredos de aplicação no FIAP.Orchestration** — `MSSQL_SA_PASSWORD`, `MONGO_*`, `KEYCLOAK_*`, `GRAFANA_*`, lidos pelo step *Ensure application secrets* do deploy.
+5. **Primeiro deploy de verdade** — rodar o `deploy-production` contra o AKS e conferir o rolling update sem downtime.
+6. **Vídeo e os três campos deste relatório** — a parte do live deploy depende dos itens 1 a 5.

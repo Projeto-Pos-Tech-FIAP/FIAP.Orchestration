@@ -16,6 +16,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Troca do token do GitHub por um do Azure para falar com o AKS (OIDC).
+  id-token: write
 
 jobs:
   validate:
@@ -24,7 +26,10 @@ jobs:
   deploy:
     name: Rolling update (Kubernetes)
     needs: validate
-    runs-on: ${{ vars.DEPLOY_RUNS_ON || 'self-hosted' }}
+    # Com o cluster gerenciado no Azure o deploy roda em runner hospedado; o
+    # self-hosted só é necessário para um cluster que não é alcançável pela
+    # internet, como o minikube local.
+    runs-on: ${{ vars.DEPLOY_RUNS_ON || 'ubuntu-latest' }}
     environment:
       name: production
     env:
@@ -35,7 +40,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # ─── Acesso ao cluster ───────────────────────────────────────────────
+      # Caminho 1 (AKS): OIDC + az aks get-credentials. Nenhum kubeconfig e
+      # nenhuma credencial de nuvem guardados no GitHub.
+      - name: Azure login (OIDC)
+        if: vars.AKS_CLUSTER_NAME != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get AKS credentials
+        if: vars.AKS_CLUSTER_NAME != ''
+        shell: bash
+        env:
+          AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+        run: |
+          # kubelogin: o cluster usa Entra ID, então o kubectl precisa trocar o
+          # token do az por um token do cluster.
+          az aks install-cli \
+            --install-location "$HOME/.local/bin/kubectl" \
+            --kubelogin-install-location "$HOME/.local/bin/kubelogin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          az aks get-credentials \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli
+
+      # Caminho 2 (transição): kubeconfig em Secret, para cluster que não é AKS.
       - name: Configure kubeconfig
+        if: vars.AKS_CLUSTER_NAME == ''
         shell: bash
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
@@ -57,7 +95,12 @@ jobs:
         shell: bash
         run: kubectl apply -f k8s/00-namespace.yaml
 
+      # Com o ACR anexado ao AKS (--attach-acr) a identidade do kubelet já tem
+      # AcrPull, então não existe imagePullSecret a criar. O passo abaixo só
+      # serve ao GHCR, e põe o secret na ServiceAccount em vez de no manifesto
+      # do Deployment — assim nada disso fica versionado no overlay.
       - name: Ensure GHCR pull secret
+        if: vars.ACR_LOGIN_SERVER == ''
         shell: bash
         env:
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
@@ -67,12 +110,14 @@ jobs:
             echo "GHCR_PULL_TOKEN não configurado: assumindo pacotes públicos no GHCR."
             exit 0
           fi
-          kubectl create secret docker-registry ghcr-pull-secret \
+          kubectl create secret docker-registry registry-pull-secret \
             --namespace "$NAMESPACE" \
             --docker-server=ghcr.io \
             --docker-username="${GHCR_PULL_USERNAME:-$GITHUB_REPOSITORY_OWNER}" \
             --docker-password="$GHCR_PULL_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl patch serviceaccount default -n "$NAMESPACE" \
+            -p '{"imagePullSecrets":[{"name":"registry-pull-secret"}]}'
 
       - name: Ensure application secrets
         shell: bash
