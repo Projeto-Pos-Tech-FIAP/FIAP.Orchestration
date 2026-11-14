@@ -13,12 +13,18 @@
 # Pré-requisitos: az CLI instalada e `az login` feito pelo usuário.
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-fcg-prod}"
 LOCATION="${LOCATION:-brazilsouth}"
 CLUSTER_NAME="${CLUSTER_NAME:-aks-fcg-prod}"
 ACR_NAME="${ACR_NAME:-}"                       # precisa ser único no Azure inteiro
 NODE_COUNT="${NODE_COUNT:-2}"
-NODE_SIZE="${NODE_SIZE:-Standard_B2s}"
+# Standard_D2as_v4: 2 vCPU e 8 GiB por nó. A família v4 é escolha forçada, não
+# preferência — na subscription Azure for Students a série B não é permitida e as
+# famílias v5/v6/v7 vêm com quota zero; DASv4 tem limite de 4 vCPU, que é
+# exatamente 2 nós deste tamanho. Confira com:
+#   az vm list-usage -l <região> -o table
+NODE_SIZE="${NODE_SIZE:-Standard_D2as_v4}"
 K8S_NAMESPACE="${K8S_NAMESPACE:-fiap-games}"
 IDENTITY_NAME="${IDENTITY_NAME:-id-fcg-github-actions}"
 GITHUB_ORG="${GITHUB_ORG:-Projeto-Pos-Tech-FIAP}"
@@ -41,6 +47,20 @@ echo "Região: $LOCATION · Resource group: $RESOURCE_GROUP"
 echo
 
 exists() { az "$@" > /dev/null 2>&1; }
+
+# ─── Resource providers ──────────────────────────────────────────────────────
+# Subscription nova vem com os providers desregistrados, e aí o `az aks create`
+# morre com MissingSubscriptionRegistration. Registrar é de graça e idempotente.
+for provider in Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.ManagedIdentity Microsoft.Network Microsoft.Compute; do
+  state="$(az provider show -n "$provider" --query registrationState -o tsv 2>/dev/null || echo NotRegistered)"
+  if [ "$state" = "Registered" ]; then
+    echo "✓ Provider $provider registrado"
+  else
+    echo "→ Registrando provider $provider"
+    az provider register --namespace "$provider" --wait -o none
+  fi
+done
+echo
 
 # ─── Resource group ──────────────────────────────────────────────────────────
 if exists group show --name "$RESOURCE_GROUP"; then
@@ -131,9 +151,9 @@ add_federation "gh-orchestration-production" \
 
 assign_role() {
   local role="$1" scope="$2"
+  # `list` não aceita --assignee-principal-type (só `create` aceita).
   if az role assignment list --assignee-object-id "$PRINCIPAL_ID" \
-      --assignee-principal-type ServicePrincipal \
-      --role "$role" --scope "$scope" --query '[0].id' -o tsv | grep -q .; then
+      --role "$role" --scope "$scope" --query '[0].id' -o tsv 2>/dev/null | grep -q .; then
     echo "✓ Role '$role' já atribuída"
   else
     echo "→ Atribuindo '$role'"
@@ -149,6 +169,58 @@ assign_role() {
 assign_role "AcrPush" "$ACR_ID"
 assign_role "Azure Kubernetes Service Cluster User Role" "$CLUSTER_ID"
 assign_role "Azure Kubernetes Service RBAC Writer" "$CLUSTER_ID/namespaces/$K8S_NAMESPACE"
+
+# ─── Acesso de quem administra ───────────────────────────────────────────────
+# Com Azure RBAC ligado, ser Owner da subscription NÃO dá acesso ao Kubernetes:
+# sem o papel abaixo, até `kubectl get nodes` volta Forbidden. A propagação leva
+# alguns minutos.
+OPERATOR_ID="$(az ad signed-in-user show --query id -o tsv 2>/dev/null || echo "")"
+if [ -n "$OPERATOR_ID" ]; then
+  if az role assignment list --assignee-object-id "$OPERATOR_ID" \
+      --role "Azure Kubernetes Service RBAC Cluster Admin" --scope "$CLUSTER_ID" \
+      --query '[0].id' -o tsv 2>/dev/null | grep -q .; then
+    echo "✓ Você já é RBAC Cluster Admin no cluster"
+  else
+    echo "→ Dando 'Azure Kubernetes Service RBAC Cluster Admin' a você no cluster"
+    az role assignment create --assignee-object-id "$OPERATOR_ID" \
+      --assignee-principal-type User \
+      --role "Azure Kubernetes Service RBAC Cluster Admin" \
+      --scope "$CLUSTER_ID" -o none
+  fi
+else
+  echo "⚠ Não foi possível identificar o usuário logado; atribua a si mesmo o papel"
+  echo "  'Azure Kubernetes Service RBAC Cluster Admin' no cluster antes de usar kubectl."
+fi
+
+# ─── Bootstrap do cluster ────────────────────────────────────────────────────
+# O namespace e o permissivo de Namespace precisam existir antes do primeiro
+# deploy: a identidade da pipeline é Writer dentro de fiap-games, e Namespace é
+# recurso cluster-scoped. Ver k8s/bootstrap/github-actions-rbac.yaml.
+if command -v kubectl > /dev/null && command -v kubelogin > /dev/null && command -v envsubst > /dev/null; then
+  echo
+  echo "→ Bootstrap do cluster (namespace + permissivo de Namespace)"
+  KUBECONFIG_TMP="$(mktemp)"
+  KUBECONFIG="$KUBECONFIG_TMP" az aks get-credentials \
+    --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --overwrite-existing -o none
+  KUBECONFIG="$KUBECONFIG_TMP" kubelogin convert-kubeconfig -l azurecli
+  KUBECONFIG="$KUBECONFIG_TMP" kubectl apply -f "$ROOT_DIR/k8s/00-namespace.yaml"
+  GITHUB_IDENTITY_OBJECT_ID="$PRINCIPAL_ID" envsubst \
+    < "$ROOT_DIR/k8s/bootstrap/github-actions-rbac.yaml" \
+    | KUBECONFIG="$KUBECONFIG_TMP" kubectl apply -f -
+  rm -f "$KUBECONFIG_TMP"
+else
+  cat <<'MISSING'
+
+→ Bootstrap do cluster NÃO executado: faltam kubectl, kubelogin ou envsubst.
+  Rode, com acesso de administrador ao cluster:
+
+    az aks get-credentials -g RESOURCE_GROUP -n CLUSTER_NAME
+    kubelogin convert-kubeconfig -l azurecli
+    kubectl apply -f k8s/00-namespace.yaml
+    GITHUB_IDENTITY_OBJECT_ID=<principalId> envsubst \
+      < k8s/bootstrap/github-actions-rbac.yaml | kubectl apply -f -
+MISSING
+fi
 
 # ─── Saída: o que configurar no GitHub ───────────────────────────────────────
 cat <<SUMMARY

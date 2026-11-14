@@ -11,17 +11,17 @@ resources:
 # arquivo — é o que torna o fluxo auditável por commit.
 images:
   - name: fiap/catalog-api
-    newName: ghcr.io/projeto-pos-tech-fiap/catalog-api
-    newTag: latest
+    newName: acrfcgprod2046.azurecr.io/catalog-api
+    newTag: sha-34eab32
   - name: fiap/usuarios-api
-    newName: ghcr.io/projeto-pos-tech-fiap/usuarios-api
-    newTag: latest
+    newName: acrfcgprod2046.azurecr.io/usuarios-api
+    newTag: sha-0d40919
   - name: fiap/payment-api
-    newName: ghcr.io/projeto-pos-tech-fiap/payment-api
-    newTag: latest
+    newName: acrfcgprod2046.azurecr.io/payment-api
+    newTag: sha-fa55c9e
   - name: fiap/notifications-api
-    newName: ghcr.io/projeto-pos-tech-fiap/notifications-api
-    newTag: latest
+    newName: acrfcgprod2046.azurecr.io/notifications-api
+    newTag: sha-50c5ffc
 
 patches:
   # Exposição externa do cluster gerenciado: o Azure provisiona um Load Balancer

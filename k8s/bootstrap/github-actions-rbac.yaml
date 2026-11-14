@@ -1,0 +1,36 @@
+# Bootstrap aplicado UMA VEZ por quem administra o cluster — não entra no
+# kustomization e não é aplicado pela pipeline (ela não teria permissão).
+#
+# Com Azure RBAC ligado, a identidade do GitHub Actions recebe "Azure Kubernetes
+# Service RBAC Writer" com escopo no namespace fiap-games. Isso cobre tudo dentro
+# do namespace, mas Namespace é recurso cluster-scoped: sem o permissivo abaixo o
+# `kubectl apply -k` falharia ao reconciliar o próprio 00-namespace.yaml.
+#
+# O ClusterRole concede exatamente isso e nada mais — não é cluster-admin, não dá
+# acesso a outros namespaces, não alcança Secret nem RBAC.
+#
+# Aplicado por scripts/azure-provision.sh, que substitui a variável:
+#   GITHUB_IDENTITY_OBJECT_ID=<principalId> envsubst < este-arquivo | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fcg-namespace-reconciler
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fcg-namespace-reconciler
+subjects:
+  # O objectId do service principal da managed identity. Com Entra ID, o
+  # kubelogin apresenta esse id como "usuário" para o cluster.
+  - kind: User
+    name: ${GITHUB_IDENTITY_OBJECT_ID}
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: fcg-namespace-reconciler
+  apiGroup: rbac.authorization.k8s.io

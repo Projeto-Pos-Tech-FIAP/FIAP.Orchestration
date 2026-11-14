@@ -32,10 +32,10 @@
 
 | Exigência | Status | Onde está |
 |---|---|---|
-| Provedor de nuvem | **Azure** | AKS + ACR + Load Balancer, região `brazilsouth` |
-| Cluster Kubernetes gerenciado (AKS) | ⚠️ **a aplicar** | IaC pronta em [`scripts/azure-provision.sh`](scripts/azure-provision.sh) (idempotente); falta `az login` e rodar. Nome: «aks-fcg-prod» |
-| Registry privado nativo da cloud (ACR) | ⚠️ **a aplicar** | Criado pelo mesmo script. A pipeline publica no ACR assim que a Variable `ACR_LOGIN_SERVER` existir; sem ela usa o GHCR |
-| Exposição externa via Load Balancer | ✅ | [`environments/production/kustomization.yaml`](environments/production/kustomization.yaml) troca o `kong-proxy` para `type: LoadBalancer`; o Azure provisiona o LB |
+| Provedor de nuvem | **Azure** | Subscription *Azure for Students*, região `brazilsouth` |
+| Cluster Kubernetes gerenciado (AKS) | ✅ | `aks-fcg-prod` no resource group `rg-fcg-prod` — Kubernetes 1.36, tier Free, 2 nós `Standard_D2as_v4`, Entra ID com Azure RBAC. Provisionado por [`scripts/azure-provision.sh`](scripts/azure-provision.sh) |
+| Registry privado nativo da cloud (ACR) | ✅ | `acrfcgprod2046.azurecr.io`, sku Basic, `admin-enabled false`. Anexado ao AKS (`--attach-acr`), então o kubelet puxa imagem por identidade e **não existe `imagePullSecret` no cluster** |
+| Exposição externa via Load Balancer | ⚠️ **no primeiro deploy** | [`environments/production/kustomization.yaml`](environments/production/kustomization.yaml) põe o `kong-proxy` como `type: LoadBalancer`; o IP público é atribuído quando o Service sobe |
 | Manifestos de infraestrutura versionados | ✅ | [`k8s/`](k8s/) com Kustomize + overlay [`environments/production/`](environments/production/) |
 | Documentação | ✅ | [README § 15 — Infraestrutura Gerenciada no Azure](README.md#15-infraestrutura-gerenciada-no-azure--aks-e-acr) |
 
@@ -58,7 +58,7 @@
 | Fuzzy search | ✅ | `multi_match` com `fuzziness: AUTO` e `fuzzy_transpositions` |
 | Ordenação por relevância | ✅ | `_score` do Elasticsearch; `match_phrase` no título com `boost: 6` põe o acerto exato acima do aproximado |
 | Sincronização na escrita | ✅ | `GameService`: POST/PUT reindexam e DELETE remove, com `refresh=true`; `POST /api/search/reindex` reconcilia o índice |
-| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **opcional** | Cluster roda in-cluster ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)). Apontar para Elastic Cloud é mudança de configuração, não de código: `Elasticsearch__Uri` no ConfigMap + `ELASTICSEARCH_API_KEY` no `.env` |
+| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **divergência** | O enunciado pede serviço gerenciado; hoje o Elasticsearch roda como Deployment dentro do AKS ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)). Funcionalmente equivalente, mas **não** é um endpoint gerenciado. A troca é de configuração, não de código: `Elasticsearch__Uri` no ConfigMap e `ELASTICSEARCH_API_KEY` no `.env` — ver § 5 |
 | Documentação | ✅ | [README § 14 — Busca Avançada](README.md#14-busca-avançada--elasticsearch) |
 
 ### 3.4 Automação de CI/CD e GitOps
@@ -110,8 +110,10 @@ Os quatro itens exigidos pelo enunciado, na ordem sugerida:
 Em ordem de bloqueio:
 
 1. **`ORCHESTRATION_TOKEN` sem permissão de escrita** — o job *Promote to production (GitOps)* falha com `403` ao atualizar a tag no FIAP.Orchestration. Precisa de um PAT com `Contents: Read and write` nos quatro repositórios de API; o GitHub só emite PAT pela interface web. Enquanto isso, a `main` não reflete produção e o live deploy não roda de ponta a ponta.
-2. **Provisionar o Azure** — `az login` e `ACR_NAME=... bash scripts/azure-provision.sh`. Leva ~5 min e **gera custo** na subscription.
-3. **Variables no GitHub** — as seis que o script imprime no fim (`ACR_LOGIN_SERVER`, `AZURE_*`, `AKS_*`), de preferência no nível da organização.
-4. **Segredos de aplicação no FIAP.Orchestration** — `MSSQL_SA_PASSWORD`, `MONGO_*`, `KEYCLOAK_*`, `GRAFANA_*`, lidos pelo step *Ensure application secrets* do deploy.
-5. **Primeiro deploy de verdade** — rodar o `deploy-production` contra o AKS e conferir o rolling update sem downtime.
-6. **Vídeo e os três campos deste relatório** — a parte do live deploy depende dos itens 1 a 5.
+2. **Primeiro deploy de verdade** — rodar o `deploy-production` contra o AKS e conferir o rolling update sem downtime e o IP do Load Balancer.
+3. **Elasticsearch gerenciado** — a única divergência de requisito que sobra. O enunciado pede Amazon OpenSearch, Elastic Cloud ou instância gerenciada, e hoje o cluster é um Deployment no AKS. Caminho: criar um deployment no Elastic Cloud (o trial de 14 dias cobre a gravação do vídeo; na Azure também dá para assinar pelo Marketplace e pagar com o crédito), pôr a URL em `Elasticsearch__Uri` e a chave em `ELASTICSEARCH_API_KEY`, rodar `scripts/create-k8s-secrets.sh` e `POST /api/search/reindex` para popular o índice. Nenhuma linha de código muda.
+4. **Vídeo e os três campos deste relatório** — a parte do live deploy por `git push` depende do item 1.
+
+Já feitos: infraestrutura provisionada no Azure, as seis Variables definidas nos cinco repositórios, imagens no ACR e os Secrets da aplicação criados no cluster a partir do `.env` (credenciais geradas, nunca versionadas).
+
+> O custo roda sobre o crédito da *Azure for Students*. Para pausar: `az aks stop -g rg-fcg-prod -n aks-fcg-prod`. Para encerrar: `az group delete --name rg-fcg-prod --yes`.
