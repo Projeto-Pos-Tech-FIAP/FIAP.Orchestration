@@ -16,6 +16,17 @@ Os quatro itens que o enunciado exige da apresentação são, em ordem: **infra 
 
 Divida a fala entre os três: quem fez cada parte apresenta a sua. Avaliador percebe quando uma pessoa narra o trabalho das outras.
 
+## Números já medidos no cluster
+
+Valores reais, pelo IP público, para você saber o que esperar na gravação: busca `couter strke` → Counter-Strike 2 com score 8,52; `stardw valey` → Stardew Valley com 10,00; cache em `/api/game/1` → 47,8 ms na primeira chamada e ~29 ms nas seguintes; compra → quatro eventos no Mongo em ~8 s.
+
+O ganho do cache parece pequeno porque o round-trip até `brazilsouth` (~28 ms) domina. Na narração, aponte a **diferença** e não o tempo absoluto — ou rode as medições de dentro do cluster, com `kubectl exec`, onde a rede sai da conta.
+
+> **Login é `[FromForm]`, não JSON.** O endpoint `POST /api/auth/login` espera formulário:
+> ```bash
+> curl -s -X POST http://<IP>:8000/api/auth/login --form-string "username=demo.fase4" --form-string "password=<senha do .env>"
+> ```
+
 ## Minutagem
 
 ### 1. Abertura — 0:00 a 1:30
