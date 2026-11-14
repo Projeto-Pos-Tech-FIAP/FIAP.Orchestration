@@ -157,6 +157,25 @@ jobs:
         shell: bash
         run: kubectl apply -k "$OVERLAY"
 
+      # A infraestrutura precisa estar pronta antes das APIs: a CatalogAPI chama
+      # EnsureCreated() no start e morre se o SQL Server ainda nao responde. O
+      # Kubernetes a reinicia, mas o backoff cresce e o rollout das APIs estoura
+      # o timeout por um motivo que nao e delas. Aqui o passo e tolerante: avisa
+      # e segue, porque quem decide o sucesso do deploy e o rollout das APIs.
+      - name: Wait for infrastructure
+        shell: bash
+        env:
+          INFRA: "sqlserver mongodb redis elasticsearch zookeeper kafka keycloak-postgres keycloak kong-gateway"
+          INFRA_TIMEOUT: "240s"
+        run: |
+          for d in $INFRA; do
+            if ! kubectl rollout status "deployment/$d" -n "$NAMESPACE" --timeout="$INFRA_TIMEOUT"; then
+              echo "::warning::Infra $d nao ficou pronta em $INFRA_TIMEOUT"
+              kubectl get pods -n "$NAMESPACE" -l "app=$d" -o wide || true
+              kubectl logs -n "$NAMESPACE" -l "app=$d" --tail=20 --all-containers --prefix || true
+            fi
+          done
+
       - name: Wait for rollout
         shell: bash
         run: |

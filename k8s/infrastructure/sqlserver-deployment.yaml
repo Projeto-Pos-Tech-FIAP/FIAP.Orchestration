@@ -19,6 +19,12 @@ spec:
       labels:
         app: sqlserver
     spec:
+      # O disco gerenciado do Azure monta com dono root, e o SQL Server 2022 roda
+      # como o usuario mssql (uid 10001) — sem isto ele falha ao criar /.system
+      # com "Access Denied". fsGroup faz o kubelet dar o volume ao grupo do
+      # processo. No minikube nao aparecia: hostPath e gravavel por todos.
+      securityContext:
+        fsGroup: 10001
       containers:
         - name: sqlserver
           image: mcr.microsoft.com/mssql/server:2022-latest
