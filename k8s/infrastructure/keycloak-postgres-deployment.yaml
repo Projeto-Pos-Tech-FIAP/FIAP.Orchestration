@@ -19,6 +19,9 @@ spec:
       labels:
         app: keycloak-postgres
     spec:
+      # O postgres:15 roda como uid 999 e o disco gerenciado monta como root.
+      securityContext:
+        fsGroup: 999
       containers:
         - name: keycloak-postgres
           image: postgres:15
@@ -43,6 +46,11 @@ spec:
           volumeMounts:
             - name: keycloak-postgres-data
               mountPath: /var/lib/postgresql/data
+              # Disco formatado traz um lost+found na raiz e o initdb recusa
+              # diretorio de dados nao vazio ("exists but is not empty"). O
+              # subPath poe o cluster num subdiretorio, como o proprio initdb
+              # recomenda na mensagem de erro.
+              subPath: pgdata
           readinessProbe:
             exec:
               command:

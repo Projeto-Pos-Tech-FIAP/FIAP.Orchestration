@@ -22,6 +22,11 @@ spec:
         app: kafka
     spec:
       enableServiceLinks: false
+      # Mesmo caso do SQL Server: o cp-kafka roda como appuser (uid 1000) e o
+      # preflight do container aborta com "/var/lib/kafka/data is writable FAILED"
+      # porque o disco gerenciado do Azure monta com dono root.
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.6.1
