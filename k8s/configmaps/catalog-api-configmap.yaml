@@ -14,6 +14,14 @@ data:
   # shared-infra-config.
   Cache__InstanceName: "catalog:"
   Cache__DefaultTtlSeconds: "600"
+  # Busca avançada (Elasticsearch). Só a CatalogAPI usa, então fica aqui e não no
+  # shared-infra-config. Para apontar para Elastic Cloud / Amazon OpenSearch, troque a
+  # Uri aqui e defina ELASTICSEARCH_API_KEY no .env — o scripts/create-k8s-secrets.sh
+  # injeta a chave na Secret da API.
+  Elasticsearch__Uri: "http://elasticsearch:9200"
+  Elasticsearch__GamesIndex: "games"
+  Elasticsearch__RequestTimeoutSeconds: "10"
+  Elasticsearch__Fuzziness: "AUTO"
   # Faltava — sem isso options.Authority ficava null e o JwtBearer nunca
   # validava nenhum token. Sem porta de propósito, ver comentário em
   # user-api-configmap.yaml (o iss real do Keycloak não inclui ":80").

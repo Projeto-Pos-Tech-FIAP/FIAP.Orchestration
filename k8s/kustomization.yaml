@@ -19,6 +19,7 @@ resources:
   - infrastructure/mongodb-pvc.yaml
   - infrastructure/kafka-pvc.yaml
   - infrastructure/keycloak-postgres-pvc.yaml
+  - infrastructure/elasticsearch-pvc.yaml
 
   # 4. Infraestrutura
   - infrastructure/sqlserver-deployment.yaml
@@ -27,6 +28,8 @@ resources:
   - infrastructure/mongodb-service.yaml
   - infrastructure/redis-deployment.yaml
   - infrastructure/redis-service.yaml
+  - infrastructure/elasticsearch-deployment.yaml
+  - infrastructure/elasticsearch-service.yaml
   - infrastructure/zookeeper-deployment.yaml
   - infrastructure/zookeeper-service.yaml
   - infrastructure/kafka-deployment.yaml

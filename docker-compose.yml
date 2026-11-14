@@ -72,6 +72,29 @@ services:
       timeout: 3s
       retries: 5
 
+  # Elasticsearch — motor da busca avançada do catálogo (só a CatalogAPI usa)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+    container_name: fiap-elasticsearch
+    environment:
+      # Nó único: sem eleição de master e sem réplicas de shard.
+      discovery.type: single-node
+      # Security desligada apenas no ambiente local, onde não há credencial a proteger.
+      # Para um endpoint gerenciado (Elastic Cloud / Amazon OpenSearch) a API recebe
+      # Elasticsearch__ApiKey pela Secret, e nada disso é versionado.
+      xpack.security.enabled: "false"
+      # Sem teto de heap o ES reserva alguns GB de RAM da máquina de dev.
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: fiap-zookeeper
@@ -208,6 +231,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
+      elasticsearch:
+        condition: service_healthy
     ports:
       - "5001:8080"
     environment:
@@ -221,6 +246,11 @@ services:
       MongoDb__CollectionName: AuditLogs
       Cache__InstanceName: "catalog:"
       Cache__DefaultTtlSeconds: "600"
+      # Busca avançada — índice de jogos no Elasticsearch
+      Elasticsearch__Uri: http://elasticsearch:9200
+      Elasticsearch__GamesIndex: games
+      Elasticsearch__RequestTimeoutSeconds: "10"
+      Elasticsearch__Fuzziness: AUTO
     restart: on-failure
 
   usuarios-api:
@@ -312,6 +342,7 @@ services:
 
 volumes:
   sqlserver_data:
+  elasticsearch_data:
   mongo_data:
   redis_data:
   zookeeper_data:

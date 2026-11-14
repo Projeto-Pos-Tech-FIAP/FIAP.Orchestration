@@ -19,13 +19,14 @@ Repositório central de infraestrutura da **FIAP Games Platform** — contém o 
 11. [Observabilidade (Prometheus + Grafana)](#11-observabilidade-prometheus--grafana)
 12. [Persistência Poliglota — MongoDB e Redis](#12-persistência-poliglota--mongodb-e-redis)
 13. [CI/CD e GitOps (GitHub Actions)](#13-cicd-e-gitops-github-actions)
-14. [Próximos Passos](#14-próximos-passos)
+14. [Busca Avançada — Elasticsearch](#14-busca-avançada--elasticsearch)
+15. [Próximos Passos](#15-próximos-passos)
 
 ---
 
 ## 1. Visão Geral da Plataforma
 
-A plataforma FIAP Games é composta por quatro microserviços que se comunicam via **Apache Kafka**, com infraestrutura de suporte centralizada (SQL Server, MongoDB e Redis).
+A plataforma FIAP Games é composta por quatro microserviços que se comunicam via **Apache Kafka**, com infraestrutura de suporte centralizada (SQL Server, MongoDB, Redis e Elasticsearch).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -756,7 +757,72 @@ O deploy roda em um **self-hosted runner** (gratuito e sem limite de minutos) in
 
 ---
 
-## 14. Próximos Passos
+## 14. Busca Avançada — Elasticsearch
+
+A Fase 4 exige um motor de busca **independente da consulta relacional**, com tolerância a erros de digitação e ordenação por relevância. Nenhum dos dois é possível com `LIKE '%termo%'` no SQL Server: o `LIKE` não tem noção de "quase igual" nem de "mais relevante".
+
+```
+                       ┌──────────────────────────────┐
+   POST/PUT /api/game  │        SQL Server            │   verdade transacional
+   ───────────────────▶│  jogos, biblioteca, usuários │
+                       └──────────────┬───────────────┘
+                                      │ indexação síncrona
+                                      │ (GameService, após o commit)
+                                      ▼
+                       ┌──────────────────────────────┐
+   GET /api/search     │      Elasticsearch           │   índice `games`
+   ◀───────────────────│  fuzzy + score de relevância │
+                       └──────────────────────────────┘
+```
+
+**Serviço:** Elasticsearch 8.19 — `docker.elastic.co/elasticsearch/elasticsearch:8.19.5`, nó único, no Compose e no cluster. A `Uri` e as credenciais vêm de configuração, então trocar para **Elastic Cloud** ou **Amazon OpenSearch** não exige recompilar nada.
+
+**Implementação:** cliente oficial `Elastic.Clients.Elasticsearch` 8.19, registrado como singleton (é thread-safe e mantém o próprio pool de conexões). Só a **CatalogAPI** usa.
+
+**Sincronização:** no `GameService`, logo depois da escrita no SQL Server — `POST`/`PUT` reindexam o jogo, `DELETE` o remove do índice. As escritas usam `refresh=true`, então o jogo recém-criado já aparece na busca seguinte. Falha ao indexar **não** derruba a escrita: a gravação no banco principal já aconteceu, o erro vai para o log nomeando o jogo que ficou de fora, e o índice é reconciliado por `POST /api/search/reindex` — que reverifica o índice, grava tudo em um `_bulk` e apaga os órfãos por `_delete_by_query`, deixando o índice igual ao banco.
+
+**Funcionalidades do `/search`:** `multi_match` com `fuzziness: AUTO` sobre título (peso 4), gêneros e desenvolvedora (2), publicadora (1.5) e descrição; `match_phrase` no título com `boost: 6` para que o acerto exato fique acima do aproximado; filtros de gênero, faixa de preço e `isActive` em cláusula `filter`, que recorta sem pontuar. A ordenação é por `_score` quando há termo e alfabética quando não há.
+
+```bash
+# "wticher" (letras trocadas) encontra "The Witcher 3"
+curl "http://localhost:5001/api/search?q=wticher"
+
+# Filtros combinados
+curl "http://localhost:5001/api/search?q=rpg&genre=RPG&minPrice=50&maxPrice=200"
+
+# Carga inicial / reconciliação do índice
+curl -X POST http://localhost:5001/api/search/reindex -H "Authorization: Bearer $TOKEN"
+```
+
+> **Cluster fora do ar devolve `503`, não um resultado pior.** Diferente do cache, a busca não tem equivalente no banco relacional — degradar em silêncio aqui significaria devolver uma busca sem fuzzy e sem relevância, o que é pior do que falhar. O índice é criado no start por um `BackgroundService` com retry, porque a API quase sempre sobe antes do Elasticsearch ficar pronto.
+
+### 14.1 Onde está a configuração
+
+| Chave | Onde | Valor no cluster |
+|---|---|---|
+| `Elasticsearch__Uri` | [`k8s/configmaps/catalog-api-configmap.yaml`](k8s/configmaps/catalog-api-configmap.yaml) | `http://elasticsearch:9200` |
+| `Elasticsearch__GamesIndex` | `catalog-api-configmap.yaml` | `games` |
+| `Elasticsearch__Fuzziness` | `catalog-api-configmap.yaml` | `AUTO` |
+| `Elasticsearch__RequestTimeoutSeconds` | `catalog-api-configmap.yaml` | `10` |
+| `Elasticsearch__ApiKey` | `ELASTICSEARCH_API_KEY` no `.env` → [`scripts/create-k8s-secrets.sh`](scripts/create-k8s-secrets.sh) | Secret criada fora do git |
+
+Fica no configmap da CatalogAPI e não no `shared-infra-config` porque nenhum outro serviço usa o Elasticsearch. Em Docker Compose os mesmos valores estão no bloco do serviço `catalog-api` no [`docker-compose.yml`](docker-compose.yml).
+
+A `ApiKey` é **opcional e não entra na lista `REQUIRED`** do script: o cluster local sobe com `xpack.security.enabled=false`, então não há credencial a injetar. Ela só é necessária ao apontar a `Uri` para um endpoint gerenciado, e aí entra pela Secret — nenhuma credencial versionada, como o resto da plataforma depois da seção de gestão de segredos.
+
+### 14.2 Manifestos
+
+| Arquivo | Conteúdo |
+|---|---|
+| [`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml) | `discovery.type=single-node`, heap de 512 MB, `strategy: Recreate` (PVC `ReadWriteOnce` não aceita dois pods), *initContainer* que ajusta o dono do diretório de dados para o uid 1000 |
+| [`k8s/infrastructure/elasticsearch-service.yaml`](k8s/infrastructure/elasticsearch-service.yaml) | `ClusterIP` na porta 9200 — sem exposição externa, igual ao Redis e ao Mongo |
+| [`k8s/infrastructure/elasticsearch-pvc.yaml`](k8s/infrastructure/elasticsearch-pvc.yaml) | 2Gi para o índice |
+
+Detalhes do mapping, do analisador e do comportamento sob falha em [`FIAP.CatalogAPI/README.md` § 11](../FIAP.CatalogAPI/README.md#11-busca-avançada--elasticsearch).
+
+---
+
+## 15. Próximos Passos
 
 ### Como adicionar UserAPI / PaymentAPI / NotificationAPI
 
