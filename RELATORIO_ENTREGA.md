@@ -58,7 +58,7 @@
 | Fuzzy search | ✅ | `multi_match` com `fuzziness: AUTO` e `fuzzy_transpositions` |
 | Ordenação por relevância | ✅ | `_score` do Elasticsearch; `match_phrase` no título com `boost: 6` põe o acerto exato acima do aproximado |
 | Sincronização na escrita | ✅ | `GameService`: POST/PUT reindexam e DELETE remove, com `refresh=true`; `POST /api/search/reindex` reconcilia o índice |
-| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **opcional** | Cluster roda in-cluster ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)). Apontar para Elastic Cloud é mudança de configuração, não de código: `Elasticsearch__Uri` no ConfigMap + `ELASTICSEARCH_API_KEY` no `.env` |
+| Serviço gerenciado (OpenSearch / Elastic Cloud) | ⚠️ **divergência** | O enunciado pede serviço gerenciado; hoje o Elasticsearch roda como Deployment dentro do AKS ([`k8s/infrastructure/elasticsearch-deployment.yaml`](k8s/infrastructure/elasticsearch-deployment.yaml)). Funcionalmente equivalente, mas **não** é um endpoint gerenciado. A troca é de configuração, não de código: `Elasticsearch__Uri` no ConfigMap e `ELASTICSEARCH_API_KEY` no `.env` — ver § 5 |
 | Documentação | ✅ | [README § 14 — Busca Avançada](README.md#14-busca-avançada--elasticsearch) |
 
 ### 3.4 Automação de CI/CD e GitOps
@@ -111,7 +111,8 @@ Em ordem de bloqueio:
 
 1. **`ORCHESTRATION_TOKEN` sem permissão de escrita** — o job *Promote to production (GitOps)* falha com `403` ao atualizar a tag no FIAP.Orchestration. Precisa de um PAT com `Contents: Read and write` nos quatro repositórios de API; o GitHub só emite PAT pela interface web. Enquanto isso, a `main` não reflete produção e o live deploy não roda de ponta a ponta.
 2. **Primeiro deploy de verdade** — rodar o `deploy-production` contra o AKS e conferir o rolling update sem downtime e o IP do Load Balancer.
-3. **Vídeo e os três campos deste relatório** — a parte do live deploy por `git push` depende do item 1.
+3. **Elasticsearch gerenciado** — a única divergência de requisito que sobra. O enunciado pede Amazon OpenSearch, Elastic Cloud ou instância gerenciada, e hoje o cluster é um Deployment no AKS. Caminho: criar um deployment no Elastic Cloud (o trial de 14 dias cobre a gravação do vídeo; na Azure também dá para assinar pelo Marketplace e pagar com o crédito), pôr a URL em `Elasticsearch__Uri` e a chave em `ELASTICSEARCH_API_KEY`, rodar `scripts/create-k8s-secrets.sh` e `POST /api/search/reindex` para popular o índice. Nenhuma linha de código muda.
+4. **Vídeo e os três campos deste relatório** — a parte do live deploy por `git push` depende do item 1.
 
 Já feitos: infraestrutura provisionada no Azure, as seis Variables definidas nos cinco repositórios, imagens no ACR e os Secrets da aplicação criados no cluster a partir do `.env` (credenciais geradas, nunca versionadas).
 
