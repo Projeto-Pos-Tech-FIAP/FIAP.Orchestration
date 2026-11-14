@@ -54,6 +54,33 @@ data:
                     - exp
                   key_claim_name: iss
 
+          # Busca do catálogo. É pública no código — SearchController não tem
+          # [Authorize] no GET —, então não leva o plugin jwt: pesquisar jogo
+          # não deveria exigir login. Restrita a GET para que o POST de
+          # reindexação não caia aqui por casamento de prefixo.
+          - name: catalog-api-search
+            paths:
+              - /api/search
+            methods:
+              - GET
+            strip_path: false
+
+          # Reindexação é operação administrativa (POST /api/search/reindex,
+          # com [Authorize] no controller). Rota própria, com JWT validado já
+          # no gateway, para que requisição sem token não chegue na API.
+          - name: catalog-api-search-reindex
+            paths:
+              - /api/search/reindex
+            methods:
+              - POST
+            strip_path: false
+            plugins:
+              - name: jwt
+                config:
+                  claims_to_verify:
+                    - exp
+                  key_claim_name: iss
+
     # Consumer que representa o Keycloak como emissor confiável de tokens.
     # O plugin jwt casa o claim "iss" do token com a "key" abaixo e valida a
     # assinatura RS256 usando a chave pública abaixo.

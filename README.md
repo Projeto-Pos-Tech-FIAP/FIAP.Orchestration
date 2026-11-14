@@ -493,6 +493,8 @@ A porta 8002 fica no Service `kong-admin`, que é `ClusterIP` — o Manager e a 
 | POST | `/api/purchase` | catalog-api | Sim |
 | GET | `/api/eventlog` | catalog-api | Sim |
 | GET | `/api/eventlog/{correlationId}` | catalog-api | Sim |
+| GET | `/api/search?q=...` | catalog-api | **Não** — busca no catálogo é pública |
+| POST | `/api/search/reindex` | catalog-api | Sim |
 
 `PaymentAPI` e `NotificationsAPI` não têm rota no Gateway — o desafio só pede roteamento explícito para `UsersAPI`/`CatalogAPI` (PaymentAPI reage via Kafka; NotificationsAPI virou Function serverless).
 
