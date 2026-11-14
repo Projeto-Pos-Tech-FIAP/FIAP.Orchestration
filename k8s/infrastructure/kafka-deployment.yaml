@@ -58,6 +58,12 @@ spec:
           volumeMounts:
             - name: kafka-data
               mountPath: /var/lib/kafka/data
+              # Mesma armadilha do Postgres: o disco formatado traz um
+              # lost+found na raiz, e o Kafka recusa qualquer diretorio que nao
+              # seja topic-partition no log dir ("'lost+found' is not in the
+              # form of topic-partition"). O subPath poe os logs em um
+              # subdiretorio limpo do mount.
+              subPath: kafka-logs
           resources:
             requests:
               cpu: "200m"
