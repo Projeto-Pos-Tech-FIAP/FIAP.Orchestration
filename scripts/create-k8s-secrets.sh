@@ -70,10 +70,20 @@ apply_secret infra-secret tier=infrastructure \
   --from-literal=GRAFANA_ADMIN_USER="$GRAFANA_ADMIN_USER" \
   --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD"
 
+# Busca avancada: o Elasticsearch local sobe com xpack.security.enabled=false, entao
+# nao ha credencial a injetar e a variavel fica vazia. Ela so e necessaria para um
+# endpoint gerenciado (Elastic Cloud / Amazon OpenSearch) — por isso e opcional e nao
+# entra na lista REQUIRED acima.
+catalog_extra=()
+if [ -n "${ELASTICSEARCH_API_KEY:-}" ]; then
+  catalog_extra+=(--from-literal=Elasticsearch__ApiKey="$ELASTICSEARCH_API_KEY")
+fi
+
 apply_secret catalog-api-secret app=catalog-api \
   --from-literal=ConnectionStrings__DefaultConnection="$(sql_connection CatalogAPI)" \
   --from-literal=MongoDb__Username="$MONGO_INITDB_ROOT_USERNAME" \
-  --from-literal=MongoDb__Password="$MONGO_INITDB_ROOT_PASSWORD"
+  --from-literal=MongoDb__Password="$MONGO_INITDB_ROOT_PASSWORD" \
+  ${catalog_extra[@]+"${catalog_extra[@]}"}
 
 apply_secret user-api-secret app=user-api \
   --from-literal=ConnectionStrings__DefaultConnection="$(sql_connection UsuariosDb)" \
