@@ -89,7 +89,11 @@ jobs:
         run: |
           kubectl version
           kubectl config current-context
-          kubectl get nodes
+          # Diagnóstico restrito ao namespace: a identidade da pipeline é RBAC
+          # Writer apenas em $NAMESPACE, então `kubectl get nodes` volta Forbidden
+          # — recurso cluster-scoped. Dar acesso a nodes só para imprimir
+          # diagnóstico seria alargar o privilégio pelo motivo errado.
+          kubectl get pods -n "$NAMESPACE" -o wide
 
       - name: Ensure namespace
         shell: bash
