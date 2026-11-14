@@ -8,8 +8,7 @@ Os quatro itens que o enunciado exige da apresentação são, em ordem: **infra 
 |---|---|
 | Rode o fluxo inteiro uma vez, sem gravar | O `deploy-production` leva ~4 min; você precisa saber o tempo real antes de narrar |
 | `kubectl get pods -n fiap-games` com tudo `Running` | SQL Server e Keycloak demoram no primeiro start; não grave em cima disso |
-| Faça um login e uma compra | Popula o índice e o log de eventos: a demo fica com dados de verdade |
-| `POST /api/search/reindex` | Garante que o catálogo inteiro está no índice |
+| `bash scripts/seed-demo-data.sh` | Um comando: cria o usuário de demonstração, semeia cinco jogos, reindexa e faz uma compra — a demo fica com dados de verdade. Idempotente |
 | Fonte do terminal grande (16pt+) e tema claro | Metade dos vídeos reprovados é por terminal ilegível |
 | Deixe o commit do live deploy pronto num branch local | Você só dá `git commit --amend` e `push` na hora |
 | Grave uma vez e assista | O primeiro take sempre tem 3 min de gordura |
