@@ -120,6 +120,9 @@ jobs:
       packages: write
       security-events: write
       actions: read
+      # Troca do token do GitHub pelo do Azure (OIDC) ao publicar no ACR.
+      # Precisa estar concedida também no workflow que chama este.
+      id-token: write
     outputs:
       image: ${{ steps.vars.outputs.image }}
       image-tag: ${{ steps.vars.outputs.sha_tag }}
@@ -129,9 +132,19 @@ jobs:
       - name: Resolve image name and tags
         id: vars
         shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
         run: |
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "image=ghcr.io/${owner}/${{ inputs.service-name }}" >> "$GITHUB_OUTPUT"
+          # Registry privado nativo da cloud quando ACR_LOGIN_SERVER está definido;
+          # GHCR enquanto o ACR não existe, para a pipeline nunca ficar sem destino.
+          if [ -n "$ACR_LOGIN_SERVER" ]; then
+            echo "image=${ACR_LOGIN_SERVER}/${{ inputs.service-name }}" >> "$GITHUB_OUTPUT"
+            echo "registry=acr" >> "$GITHUB_OUTPUT"
+          else
+            owner="${GITHUB_REPOSITORY_OWNER,,}"
+            echo "image=ghcr.io/${owner}/${{ inputs.service-name }}" >> "$GITHUB_OUTPUT"
+            echo "registry=ghcr" >> "$GITHUB_OUTPUT"
+          fi
           echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "push=false" >> "$GITHUB_OUTPUT"
@@ -208,12 +221,29 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Login to GHCR
-        if: steps.vars.outputs.push == 'true'
+        if: steps.vars.outputs.push == 'true' && steps.vars.outputs.registry == 'ghcr'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+
+      # OIDC: o runner troca o próprio token por um do Azure. Não existe senha
+      # de registry nem client secret guardados no GitHub.
+      - name: Azure login (OIDC)
+        if: steps.vars.outputs.push == 'true' && steps.vars.outputs.registry == 'acr'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        if: steps.vars.outputs.push == 'true' && steps.vars.outputs.registry == 'acr'
+        shell: bash
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+        run: az acr login --name "${ACR_LOGIN_SERVER%%.*}"
 
       - name: Push image
         id: push

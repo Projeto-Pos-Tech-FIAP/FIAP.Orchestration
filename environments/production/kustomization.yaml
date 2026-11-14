@@ -4,6 +4,11 @@ kind: Kustomization
 resources:
   - ../../k8s
 
+# As imagens são reescritas pela pipeline a cada deploy (job "Promote to
+# production"): ela grava aqui o registry em que publicou e a tag imutável do
+# commit. Com ACR_LOGIN_SERVER definido nas Variables, o registry passa a ser o
+# ACR; sem ele continua o GHCR. O estado de produção é sempre o que está neste
+# arquivo — é o que torna o fluxo auditável por commit.
 images:
   - name: fiap/catalog-api
     newName: ghcr.io/projeto-pos-tech-fiap/catalog-api
@@ -19,11 +24,16 @@ images:
     newTag: latest
 
 patches:
+  # Exposição externa do cluster gerenciado: o Azure provisiona um Load Balancer
+  # público para este Service e devolve o IP em status.loadBalancer. O NodePort
+  # da base continua valendo no minikube, onde não há Load Balancer a pedir.
+  # Kong segue sendo o único ponto de entrada — as APIs ficam ClusterIP.
   - target:
-      kind: Deployment
-      labelSelector: tier=service
+      kind: Service
+      name: kong-proxy
     patch: |-
-      - op: add
-        path: /spec/template/spec/imagePullSecrets
-        value:
-          - name: ghcr-pull-secret
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: remove
+        path: /spec/ports/0/nodePort
