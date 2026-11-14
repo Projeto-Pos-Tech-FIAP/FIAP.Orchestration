@@ -35,7 +35,7 @@
 | Provedor de nuvem | **Azure** | Subscription *Azure for Students*, região `brazilsouth` |
 | Cluster Kubernetes gerenciado (AKS) | ✅ | `aks-fcg-prod` no resource group `rg-fcg-prod` — Kubernetes 1.36, tier Free, 2 nós `Standard_D2as_v4`, Entra ID com Azure RBAC. Provisionado por [`scripts/azure-provision.sh`](scripts/azure-provision.sh) |
 | Registry privado nativo da cloud (ACR) | ✅ | `acrfcgprod2046.azurecr.io`, sku Basic, `admin-enabled false`. Anexado ao AKS (`--attach-acr`), então o kubelet puxa imagem por identidade e **não existe `imagePullSecret` no cluster** |
-| Exposição externa via Load Balancer | ⚠️ **no primeiro deploy** | [`environments/production/kustomization.yaml`](environments/production/kustomization.yaml) põe o `kong-proxy` como `type: LoadBalancer`; o IP público é atribuído quando o Service sobe |
+| Exposição externa via Load Balancer | ✅ | `kong-proxy` como `type: LoadBalancer`, IP público **4.203.49.35:8000**. As APIs seguem `ClusterIP` — Kong é o único ponto de entrada |
 | Manifestos de infraestrutura versionados | ✅ | [`k8s/`](k8s/) com Kustomize + overlay [`environments/production/`](environments/production/) |
 | Documentação | ✅ | [README § 15 — Infraestrutura Gerenciada no Azure](README.md#15-infraestrutura-gerenciada-no-azure--aks-e-acr) |
 
@@ -71,7 +71,7 @@
 | Containerização com versionamento | ✅ | `docker/metadata-action` gera tags por SHA e por `v*.*.*` |
 | Security scan (desejável) | ✅ | Trivy com SARIF no GitHub Security e gate em `CRITICAL` |
 | Push para o registry | ✅ | ACR por OIDC quando `ACR_LOGIN_SERVER` está definida; GHCR como transição |
-| Deploy sem downtime (Rolling Update) | ⚠️ **a validar** | Manifestos com `maxUnavailable: 0` e [`deploy-production.yml`](.github/workflows/deploy-production.yml) em `ubuntu-latest` com `az aks get-credentials`; falta a primeira execução contra o AKS |
+| Deploy sem downtime (Rolling Update) | ✅ | `maxUnavailable: 0` nos quatro serviços; [`deploy-production.yml`](.github/workflows/deploy-production.yml) executou contra o AKS com todos os steps verdes — ver § 3.6 |
 | Documentação | ✅ | [README § 13 — CI/CD e GitOps](README.md#13-cicd-e-gitops-github-actions) |
 
 ### 3.5 Segurança e gestão de segredos
@@ -83,6 +83,51 @@
 | Credencial de nuvem na pipeline | ✅ | **Nenhuma**: GitHub Actions autentica no Azure por OIDC com federated credentials, sem client secret e sem `KUBE_CONFIG` |
 | Nenhum Secret versionado | ✅ | Nenhum `kind: Secret` com dados reais no Git; desenvolvimento local usa User Secrets e `.env` fora do repositório |
 | Documentação | ✅ | [README — Gestão de Segredos](README.md#gestão-de-segredos) |
+
+### 3.6 Validação executada no cluster
+
+Tudo abaixo foi medido **contra o AKS, pelo IP público do Load Balancer**, com os 15 pods `Running`.
+
+**Gateway barrando rota protegida** — o `401` vem do Kong, antes de chegar na API:
+
+```
+curl http://4.203.49.35:8000/api/game        → 401 {"message":"Unauthorized"}
+```
+
+**Busca com erro de digitação e ordenação por relevância:**
+
+| Consulta | Resultado | Score |
+|---|---|---|
+| `q=couter strke` | Counter-Strike 2 | 8,52 |
+| `q=stardw valey` | Stardew Valley | 10,00 |
+| `q=rpg mundo aberto` | The Witcher 3, Elden Ring | 2,51 cada |
+
+O primeiro caso tem dois erros de digitação em duas palavras e ainda assim casa o título — é o `fuzziness: AUTO` em ação. O terceiro mostra o score vindo dos gêneros, não do título.
+
+**Cache distribuído** em `/api/game/1`, cinco chamadas seguidas:
+
+```
+chamada 1: 47,8 ms   ← SQL Server
+chamada 2: 29,9 ms   ← Redis
+chamada 3: 30,1 ms
+chamada 4: 28,0 ms
+chamada 5: 30,0 ms
+```
+
+Ganho de ~38% na leitura repetida. O número é modesto porque o round-trip de rede até `brazilsouth` (~28 ms) domina o tempo total — o ganho real do cache é a diferença, não o tempo absoluto. Depois de um `PUT` no mesmo jogo, a resposta volta com o preço novo (`99.90`): a escrita invalida o cache por prefixo.
+
+**NoSQL — log de eventos do fluxo de compra.** Uma compra (`POST /api/purchase`) gerou, via Kafka, os quatro eventos correlacionados pelo mesmo `correlationId` e persistidos no MongoDB:
+
+| Evento | Direção | Serviço | Horário |
+|---|---|---|---|
+| `OrderPlacedEvent` | Published | CatalogAPI | 23:08:53.812 |
+| `OrderPlacedEvent` | Consumed | PaymentAPI | 23:08:56.581 |
+| `PaymentProcessedEvent` | Published | PaymentAPI | 23:08:57.677 |
+| `PaymentProcessedEvent` | Consumed | CatalogAPI | 23:09:02.108 |
+
+O fluxo inteiro atravessou três serviços em ~8 segundos.
+
+> As credenciais do usuário de demonstração (`demo.fase4`) estão no `.env` do FIAP.Orchestration, fora do Git.
 
 ## 4. Roteiro do vídeo (até 25 min)
 
