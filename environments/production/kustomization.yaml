@@ -10,7 +10,7 @@ resources:
 images:
   - name: fiap/catalog-api
     newName: acrfcgprod2046.azurecr.io/catalog-api
-    newTag: sha-5b69d59
+    newTag: sha-763428a
   - name: fiap/usuarios-api
     newName: acrfcgprod2046.azurecr.io/usuarios-api
     newTag: sha-0d40919
