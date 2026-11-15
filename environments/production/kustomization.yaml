@@ -1,9 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
   - ../../k8s
-
 # As imagens são reescritas pela pipeline a cada deploy (job "Promote to
 # production"): ela grava aqui o registry em que publicou e a tag imutável do
 # commit. Com ACR_LOGIN_SERVER definido nas Variables, o registry passa a ser o
@@ -12,7 +10,7 @@ resources:
 images:
   - name: fiap/catalog-api
     newName: acrfcgprod2046.azurecr.io/catalog-api
-    newTag: sha-34eab32
+    newTag: sha-5b69d59
   - name: fiap/usuarios-api
     newName: acrfcgprod2046.azurecr.io/usuarios-api
     newTag: sha-0d40919
@@ -22,7 +20,6 @@ images:
   - name: fiap/notifications-api
     newName: acrfcgprod2046.azurecr.io/notifications-api
     newTag: sha-50c5ffc
-
 patches:
   # Exposição externa do cluster gerenciado: o Azure provisiona um Load Balancer
   # público para este Service e devolve o IP em status.loadBalancer. O NodePort
